@@ -2,6 +2,7 @@ package com.example.carego
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -209,21 +211,43 @@ fun SignUpScreen(navController: NavController) {
             when (currentStep) {
                 0 -> {
                     Text("Select Type", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     Row(
                         horizontalArrangement = Arrangement.SpaceEvenly,
-                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
                     ) {
-                        Button(onClick = {
-                            userType = "User"
-                            currentStep = 1
-                        }) {
-                            Text("User")
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Image(
+                                painter = painterResource(id = R.drawable.caregologo),
+                                contentDescription = "User Logo",
+                                modifier = Modifier.size(80.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = {
+                                userType = "User"
+                                currentStep = 1
+                            }) {
+                                Text("User")
+                            }
                         }
-                        Button(onClick = {
-                            userType = "Caregiver"
-                            currentStep = 1
-                        }) {
-                            Text("Caregiver")
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Image(
+                                painter = painterResource(id = R.drawable.caregiverlogo),
+                                contentDescription = "Caregiver Logo",
+                                modifier = Modifier.size(80.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = {
+                                userType = "Caregiver"
+                                currentStep = 1
+                            }) {
+                                Text("Caregiver")
+                            }
                         }
                     }
                 }

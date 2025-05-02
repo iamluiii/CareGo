@@ -52,6 +52,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -134,23 +135,6 @@ fun ProfileScreen(navController: NavController) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            LaunchedEffect(isLoggingOut.value) {
-                if (isLoggingOut.value) {
-                    delay(2000)
-                    FirebaseAuth.getInstance().signOut()
-
-                    // Clear remembered states
-                    profileImageUrl = null
-                    userDetails.clear()
-
-                    Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
-                    navController.navigate(Screen.ChooseScreen.route) {
-                        popUpTo(0) { inclusive = true }
-                    }
-
-                    isLoggingOut.value = false
-                }
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -212,6 +196,24 @@ fun ProfileScreen(navController: NavController) {
                 onClick = {
                     if (!isLoggingOut.value) {
                         isLoggingOut.value = true
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            try {
+                                delay(2000)
+                                FirebaseAuth.getInstance().signOut()
+
+                                profileImageUrl = null
+                                userDetails.clear()
+
+                                Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                                navController.navigate(Screen.UserLoginScreen.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Logout failed: ${e.message}", Toast.LENGTH_LONG).show()
+                            } finally {
+                                isLoggingOut.value = false
+                            }
+                        }
                     }
                 }
             )

@@ -46,10 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
 import com.example.carego.R
+import com.example.carego.navigation.Screen
 import com.example.carego.screens.user.mainscreen.LogoutButton
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,23 +131,6 @@ fun CareGiverProfileScreen(navController: NavHostController) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LaunchedEffect(isLoggingOut.value) {
-            if (isLoggingOut.value) {
-                kotlinx.coroutines.delay(2000)
-                FirebaseAuth.getInstance().signOut()
-
-                profileImageUrl = null
-                caregiverDetails.clear()
-
-                Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
-                navController.navigate("choose_screen") {
-                    popUpTo(0) { inclusive = true }
-                }
-
-                isLoggingOut.value = false
-            }
-        }
-
             Spacer(modifier = Modifier.height(16.dp))
 
             // Profile image
@@ -193,11 +178,30 @@ fun CareGiverProfileScreen(navController: NavHostController) {
                 DisplayCard("License Type", caregiverDetails["License Type"] ?: "")
             }
 
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ✅ Fixed logout logic here
             LogoutButton(
                 isLoggingOut = isLoggingOut.value,
                 onClick = {
                     if (!isLoggingOut.value) {
                         isLoggingOut.value = true
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            kotlinx.coroutines.delay(2000)
+                            try {
+                                FirebaseAuth.getInstance().signOut()
+                                profileImageUrl = null
+                                caregiverDetails.clear()
+                                Toast.makeText(context, "Logged out successfully", Toast.LENGTH_SHORT).show()
+                                navController.navigate(Screen.UserLoginScreen.route) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Logout failed: ${e.message}", Toast.LENGTH_LONG).show()
+                            } finally {
+                                isLoggingOut.value = false
+                            }
+                        }
                     }
                 }
             )

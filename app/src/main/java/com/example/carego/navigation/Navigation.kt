@@ -19,7 +19,6 @@ import com.example.carego.screens.user.mainscreen.ProfileScreen
 import com.example.carego.screens.user.mainscreen.UserMainScreen
 
 sealed class Screen(val route: String) {
-    data object ChooseScreen : Screen("choose_screen")
     data object UserLoginScreen : Screen("user_login_screen")
     data object UserForgetPasswordScreen : Screen("user_forgot_password_screen")
     data object CareGiverForgetPasswordScreen : Screen("caregiver_forgot_password_screen")
