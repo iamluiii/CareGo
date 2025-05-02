@@ -118,10 +118,14 @@ fun AvailabilityDatePicker(
 ,
             dismissButton = {
                 OutlinedButton(
-                    onClick = { showDialog = false }
+                    onClick = {
+                        showDialog = false
+                        onDateSaved() // ✅ triggers parent to hide dialog and unblock UI
+                    }
                 ) {
                     Text("Cancel")
                 }
+
             },
             title = { Text("Select Availability") },
             text = {

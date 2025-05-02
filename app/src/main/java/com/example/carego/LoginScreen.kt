@@ -57,8 +57,13 @@ fun LoginScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         val user = auth.currentUser
-        if (user != null && !user.isEmailVerified) {
-            auth.signOut()
+        if (user != null) {
+            user.reload().await()
+            if (!user.isEmailVerified) {
+                auth.signOut()
+            } else {
+                navigateBasedOnRole(user.uid, db, navController)
+            }
         }
     }
 
@@ -257,15 +262,16 @@ suspend fun navigateBasedOnRole(uid: String, db: FirebaseFirestore, navControlle
     val userDoc = db.collection("users").document(uid).get().await()
     val caregiverDoc = db.collection("caregivers").document(uid).get().await()
     if (userDoc.exists()) {
-        navController.navigate("user_main_screen") {
-            popUpTo("login_screen") { inclusive = true }
+        navController.navigate(Screen.UserMainScreen.route) {
+            popUpTo(Screen.UserLoginScreen.route) { inclusive = true }
         }
     } else if (caregiverDoc.exists()) {
-        navController.navigate("caregiver_main_screen") {
-            popUpTo("login_screen") { inclusive = true }
+        navController.navigate(Screen.CareGiverMainScreen.route) {
+            popUpTo(Screen.UserLoginScreen.route) { inclusive = true }
         }
     }
 }
+
 
 @Composable
 fun EmailField(email: String, onEmailChange: (String) -> Unit) {

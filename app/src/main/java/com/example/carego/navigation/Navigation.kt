@@ -7,6 +7,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.carego.ChatScreen
+import com.example.carego.LauncherScreen
 import com.example.carego.LoginScreen
 import com.example.carego.SignUpScreen
 import com.example.carego.screens.caregiver.forgetpassword.CareGiverForgetPasswordScreen
@@ -19,11 +20,13 @@ import com.example.carego.screens.user.mainscreen.ProfileScreen
 import com.example.carego.screens.user.mainscreen.UserMainScreen
 
 sealed class Screen(val route: String) {
+
     data object UserLoginScreen : Screen("user_login_screen")
     data object UserForgetPasswordScreen : Screen("user_forgot_password_screen")
     data object CareGiverForgetPasswordScreen : Screen("caregiver_forgot_password_screen")
     data object UserMainScreen : Screen("user_main_screen")
     data object CareGiverMainScreen : Screen("caregiver_main_screen")
+    data object LauncherScreen : Screen("launcher_screen")
 
     data object BookingScreen : Screen("booking_screen/{appointmentId}/{caregiverId}/{date}/{timeSlot}") {
         fun createRoute(appointmentId: String, caregiverId: String, date: String, timeSlot: String): String {
@@ -50,8 +53,11 @@ sealed class Screen(val route: String) {
 fun CareGoNavGraph(navController: NavHostController) {
     NavHost(
         navController = navController,
-        startDestination = Screen.UserLoginScreen.route
+        startDestination = Screen.LauncherScreen.route
     ) {
+        composable(Screen.LauncherScreen.route) {
+            LauncherScreen(navController)
+        }
 
         composable(route = Screen.UserLoginScreen.route) {
             LoginScreen(navController)

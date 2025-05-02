@@ -20,7 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -57,7 +56,9 @@ import com.example.carego.R
 import com.example.carego.navigation.Screen
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.net.URLEncoder
@@ -98,7 +99,12 @@ fun UserMainScreen(
         availableCaregivers.clear()
         pendingBookings.clear()
         confirmedAppointments.clear()
+
+        val seenIds = mutableSetOf<String>()
+
         for (appointment in allAppointments) {
+            if (!seenIds.add(appointment.id)) continue // ✅ Skip duplicates by ID
+
             when (appointment.status.lowercase()) {
                 "available" -> {
                     if ((selectedDate.value.isEmpty() || appointment.date == selectedDate.value) &&
@@ -109,53 +115,79 @@ fun UserMainScreen(
                         availableCaregivers.add(appointment)
                     }
                 }
-                "pending" -> pendingBookings.add(appointment)
-                "confirmed" -> confirmedAppointments.add(appointment)
+
+                "pending" -> {
+                    if (pendingBookings.none { it.id == appointment.id }) {
+                        pendingBookings.add(appointment)
+                    }
+                }
+
+                "confirmed" -> {
+                    if (confirmedAppointments.none {
+                            it.date == appointment.date &&
+                                    it.timeSlot == appointment.timeSlot &&
+                                    it.caregiverUsername == appointment.caregiverUsername
+                        }) {
+                        confirmedAppointments.add(appointment)
+                    }
+                }
+
             }
         }
     }
 
-    fun loadAppointments() {
-        allAppointments.clear()
+    fun listenToAppointmentsRealtime() {
         val currentUserId = auth.currentUser?.uid
         db.collection("appointments")
-            .get()
-            .addOnSuccessListener { snapshot ->
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) {
+                    isLoading.value = false
+                    return@addSnapshotListener
+                }
+
+                allAppointments.clear()
+
+                val jobs = mutableListOf<Job>()
+
                 for (doc in snapshot.documents) {
                     val caregiverId = doc.getString("caregiverId") ?: continue
                     val dateStr = doc.getString("date") ?: continue
                     val timeSlot = doc.getString("timeSlot") ?: continue
-                    val status = doc.getString("status") ?: "Available"
+                    val status = doc.getString("status") ?: "available"
                     val appointmentUserId = doc.getString("userId")
-                    if ((status.lowercase() == "pending" || status.lowercase() == "booked" || status.lowercase() == "confirmed") &&
+
+                    if ((status.lowercase() in listOf("pending", "booked", "confirmed")) &&
                         appointmentUserId != currentUserId
                     ) continue
 
-                    db.collection("caregivers").document(caregiverId).get()
-                        .addOnSuccessListener { caregiverDoc ->
-                            val caregiverUsername = caregiverDoc.getString("username") ?: ""
-                            val caregiverLicense = caregiverDoc.getString("license") ?: ""
-                            val caregiverAddress = caregiverDoc.getString("address") ?: ""
-                            val caregiverMunicipality = caregiverAddress.split(",").getOrNull(2)?.trim() ?: ""
+                    val job = coroutineScope.launch {
+                        val caregiverDoc = db.collection("caregivers").document(caregiverId).get().await()
+                        val caregiverUsername = caregiverDoc.getString("username") ?: ""
+                        val caregiverLicense = caregiverDoc.getString("license") ?: ""
+                        val caregiverAddress = caregiverDoc.getString("address") ?: ""
+                        val caregiverMunicipality = caregiverAddress.split(",").getOrNull(2)?.trim() ?: ""
 
-                            val appointment = AppointmentInfo(
-                                id = doc.id,
-                                caregiverId = caregiverId,
-                                caregiverUsername = caregiverUsername,
-                                license = caregiverLicense,
-                                municipality = caregiverMunicipality,
-                                date = dateStr,
-                                timeSlot = timeSlot,
-                                status = status.lowercase()
-                            )
-                            allAppointments.add(appointment)
-                            applyFilter()
-                            isLoading.value = false
-                        }
+                        val appointment = AppointmentInfo(
+                            id = doc.id,
+                            caregiverId = caregiverId,
+                            caregiverUsername = caregiverUsername,
+                            license = caregiverLicense,
+                            municipality = caregiverMunicipality,
+                            date = dateStr,
+                            timeSlot = timeSlot,
+                            status = status.lowercase()
+                        )
+                        allAppointments.add(appointment)
+                    }
+
+                    jobs.add(job)
                 }
-            }
-            .addOnFailureListener {
-                isLoading.value = false
+
+                coroutineScope.launch {
+                    jobs.joinAll()
+                    applyFilter()
+                    isLoading.value = false
+                }
             }
     }
 
@@ -163,7 +195,7 @@ fun UserMainScreen(
         auth.currentUser?.uid?.let { userId ->
             fetchUserInfo(db, userId, username, pwdType, isLoading)
         }
-        loadAppointments()
+        listenToAppointmentsRealtime()
     }
 
     if (isLoading.value) {
@@ -194,9 +226,6 @@ fun UserMainScreen(
                 ) {
                     Text("Available Caregivers", style = MaterialTheme.typography.titleLarge)
                     Row {
-                        IconButton(onClick = { loadAppointments() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
                         IconButton(onClick = { showFilterDialog.value = true }) {
                             Icon(Icons.Default.FilterList, contentDescription = "Filter")
                         }
@@ -238,7 +267,7 @@ fun UserMainScreen(
                             coroutineScope.launch {
                                 delay(2000)
                                 val success = cancelBooking(id)
-                                if (success) loadAppointments()
+                                if (success) listenToAppointmentsRealtime()
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))

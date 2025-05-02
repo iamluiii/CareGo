@@ -301,30 +301,39 @@ fun ChatScreen(
             }
             else {
                 if (userType == "caregiver" && appointmentStatus == "pending") {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            Button(
-                                onClick = {
+                    var showAcceptDialog by remember { mutableStateOf(false) }
+                    var showDeclineDialog by remember { mutableStateOf(false) }
+
+                    if (showAcceptDialog) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { showAcceptDialog = false },
+                            title = { Text("Confirm Acceptance") },
+                            text = { Text("Are you sure you want to accept this booking?") },
+                            confirmButton = {
+                                Button(onClick = {
                                     db.collection("appointments").document(appointmentId)
                                         .update("status", "confirmed")
                                     appointmentStatus = "confirmed"
+                                    showAcceptDialog = false
+                                }) {
+                                    Text("Yes")
                                 }
-                            ) {
-                                Text("Accept")
+                            },
+                            dismissButton = {
+                                Button(onClick = { showAcceptDialog = false }) {
+                                    Text("No")
+                                }
                             }
+                        )
+                    }
 
-                            Button(
-                                onClick = {
+                    if (showDeclineDialog) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { showDeclineDialog = false },
+                            title = { Text("Confirm Decline") },
+                            text = { Text("Are you sure you want to decline and cancel the chat?") },
+                            confirmButton = {
+                                Button(onClick = {
                                     val appointmentRef = db.collection("appointments").document(appointmentId)
                                     val chatRef = db.collection("chats").document(appointmentId)
 
@@ -347,12 +356,53 @@ fun ChatScreen(
                                             }
                                         }
                                     }
+
+                                    showDeclineDialog = false
+                                }) {
+                                    Text("Yes")
                                 }
+                            },
+                            dismissButton = {
+                                Button(onClick = { showDeclineDialog = false }) {
+                                    Text("No")
+                                }
+                            }
+                        )
+                    }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp) // ✅ added spacing
+                        ) {
+                            Text(
+                                text = "Please confirm this booking request:",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                Text("Decline")
+                                Button(onClick = { showAcceptDialog = true }) {
+                                    Text("Accept")
+                                }
+
+                                Button(onClick = { showDeclineDialog = true }) {
+                                    Text("Decline")
+                                }
                             }
                         }
                     }
+
                 }
 
                 Spacer(modifier = Modifier.height(8.dp)) // 🆕 space between top bar and messages

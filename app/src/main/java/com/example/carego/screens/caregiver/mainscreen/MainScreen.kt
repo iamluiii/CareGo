@@ -67,6 +67,13 @@ import com.example.carego.screens.availabilityscreen.AvailabilityDatePicker
 import com.example.carego.screens.user.mainscreen.extractMunicipality
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+
+
+
 
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
@@ -79,8 +86,6 @@ fun CareGiverMainScreen(navController: NavController) {
     var fullName by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var licenseType by remember { mutableStateOf("") }
-    var appointments by remember { mutableStateOf(listOf<Appointment>()) }
-    var isLoggingOut by remember { mutableStateOf(false) }
     val confirmedAppointments = remember { mutableStateListOf<Appointment>() } // ⬅️ you forgot to declare this!
     val pendingAppointments = remember { mutableStateListOf<Appointment>() }
 
@@ -104,67 +109,72 @@ fun CareGiverMainScreen(navController: NavController) {
             db.collection("appointments")
                 .whereEqualTo("caregiverId", currentUserId)
                 .addSnapshotListener { snapshot, error ->
-                    if (error != null) return@addSnapshotListener
-                    if (snapshot != null) {
-                        savedAvailability.clear()
-                        pendingAppointments.clear()
-                        confirmedAppointments.clear()
+                    if (error != null || snapshot == null) return@addSnapshotListener
 
-                        for (document in snapshot.documents) {
-                            val appointment = Appointment(
-                                id = document.id,
-                                caregiverId = document.getString("caregiverId") ?: "",
-                                userId = document.getString("userId") ?: "",
-                                username = document.getString("caregiverUsername") ?: "",
-                                date = document.getString("date") ?: "",
-                                timeSlot = document.getString("timeSlot") ?: "",
-                                status = document.getString("status") ?: "",
-                                municipality = document.getString("municipality") ?: "",
-                                pwdType = document.getString("pwdType") ?: ""
-                            )
+                    savedAvailability.clear()
+                    pendingAppointments.clear()
+                    confirmedAppointments.clear()
 
-                            when (appointment.status.lowercase()) {
-                                "available" -> {
-                                    val alreadyExists = savedAvailability.any { it.id == appointment.id }
-                                    if (!alreadyExists) {
-                                        savedAvailability.add(appointment)
-                                    }
+                    val jobs = mutableListOf<Job>()
+
+                    for (document in snapshot.documents) {
+                        val appointment = Appointment(
+                            id = document.id,
+                            caregiverId = document.getString("caregiverId") ?: "",
+                            userId = document.getString("userId") ?: "",
+                            username = document.getString("caregiverUsername") ?: "",
+                            date = document.getString("date") ?: "",
+                            timeSlot = document.getString("timeSlot") ?: "",
+                            status = document.getString("status") ?: "",
+                            municipality = document.getString("municipality") ?: "",
+                            pwdType = document.getString("pwdType") ?: ""
+                        )
+
+                        when (appointment.status.lowercase()) {
+                            "available" -> {
+                                if (savedAvailability.none { it.id == appointment.id }) {
+                                    savedAvailability.add(appointment)
                                 }
-                                "pending" -> pendingAppointments.add(appointment)
+                            }
 
-                                "confirmed" -> {
-                                    val userId = appointment.userId
-                                    db.collection("users").document(userId).get().addOnSuccessListener { userDoc ->
+
+                            "pending" -> pendingAppointments.add(appointment)
+
+                            "confirmed" -> {
+                                val job = coroutineScope.launch {
+                                    try {
+                                        val userDoc = db.collection("users").document(appointment.userId).get().await()
                                         val firstName = userDoc.getString("firstName") ?: ""
                                         val lastName = userDoc.getString("lastName") ?: ""
                                         val middleName = userDoc.getString("middleName") ?: ""
-
                                         val fullName = listOf(lastName, firstName, middleName)
                                             .filter { it.isNotEmpty() && it.lowercase() != "null" }
                                             .joinToString(" ")
 
                                         val address = userDoc.getString("address") ?: ""
-                                        val timeSlot = appointment.timeSlot
-
-                                        val enrichedAppointment = appointment.copy(
+                                        val enriched = appointment.copy(
                                             patientName = fullName,
                                             location = address,
-                                            time = timeSlot
+                                            time = appointment.timeSlot
                                         )
 
-                                        val alreadyExists = confirmedAppointments.any {
-                                            it.date == enrichedAppointment.date &&
-                                                    it.time == enrichedAppointment.time &&
-                                                    it.patientName == enrichedAppointment.patientName
+                                        if (confirmedAppointments.none {
+                                                it.date == enriched.date &&
+                                                        it.time == enriched.time &&
+                                                        it.patientName == enriched.patientName
+                                            }) {
+                                            confirmedAppointments.add(enriched)
                                         }
 
-                                        if (!alreadyExists) {
-                                            confirmedAppointments.add(enrichedAppointment)
-                                        }
-                                    }
+                                    } catch (_: Exception) {}
                                 }
+                                jobs.add(job)
                             }
                         }
+                    }
+
+                    coroutineScope.launch {
+                        jobs.joinAll()
                     }
                 }
         }
@@ -232,7 +242,10 @@ fun CareGiverMainScreen(navController: NavController) {
 
                     if (showDeleteConfirm) {
                         AlertDialog(
-                            onDismissRequest = { showDeleteConfirm = false },
+                            onDismissRequest = {
+                                showDeleteConfirm = false
+                                coroutineScope.launch { dismissState.reset() } // ✅ reset swipe
+                            },
                             title = { Text("Delete Availability") },
                             text = { Text("Are you sure you want to delete ${appointment.date} - ${appointment.timeSlot}?") },
                             confirmButton = {
@@ -243,12 +256,16 @@ fun CareGiverMainScreen(navController: NavController) {
                                         .delete()
                                     savedAvailability.remove(appointment)
                                     showDeleteConfirm = false
+                                    coroutineScope.launch { dismissState.reset() } // ✅ reset swipe after delete too
                                 }) {
                                     Text("Delete")
                                 }
                             },
                             dismissButton = {
-                                OutlinedButton(onClick = { showDeleteConfirm = false }) {
+                                OutlinedButton(onClick = {
+                                    showDeleteConfirm = false
+                                    coroutineScope.launch { dismissState.reset() } // ✅ reset swipe
+                                }) {
                                     Text("Cancel")
                                 }
                             }
@@ -279,7 +296,7 @@ fun CareGiverMainScreen(navController: NavController) {
             savedAvailability = savedAvailability,
             onDateSaved = {
                 showAddAvailabilityDialog = false
-                // No need to manually load again.
+
             }
         )
     }
@@ -297,20 +314,6 @@ fun CareGiverMainScreen(navController: NavController) {
 
         )
 
-    }
-}
-
-@Composable
-fun CareGiverProfileCard(fullName: String, username: String, licenseType: String) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Username: $username", fontSize = 16.sp, fontFamily = FontFamily.SansSerif)
-            Text("Full Name: $fullName", fontSize = 16.sp, fontFamily = FontFamily.SansSerif)
-            Text("License Type: $licenseType", fontSize = 16.sp, fontFamily = FontFamily.SansSerif)
-        }
     }
 }
 
@@ -587,16 +590,6 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
     }
 }
 
-
-// Extracts 3rd comma-separated segment (expected to be the municipality)
-fun extractMunicipality(address: String): String {
-    val parts = address.split(",").map { it.trim() }
-    return if (parts.size >= 3) parts[2] else ""
-}
-
-
-
-
 fun updateAvailability(
     date: String,
     currentTimes: List<String>,
@@ -606,7 +599,7 @@ fun updateAvailability(
     val db = FirebaseFirestore.getInstance()
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
 
-    // Remove old times
+    // Remove old time slots
     val toDelete = savedAvailability.filter {
         it.caregiverId == currentUserId && it.date == date && currentTimes.contains(it.timeSlot)
     }
@@ -615,27 +608,39 @@ fun updateAvailability(
         savedAvailability.remove(it)
     }
 
-    // Add new times only if they don't exist
+    // Add new time slots only if they don't exist — confirmed from Firestore directly
     newTimes.forEach { timeSlot ->
-        val exists = savedAvailability.any {
+        val existsInState = savedAvailability.any {
             it.caregiverId == currentUserId && it.date == date && it.timeSlot == timeSlot
         }
-        if (!exists) {
-            val newDoc = db.collection("appointments").document()
-            val newAppointment = Appointment(
-                id = newDoc.id,
-                caregiverId = currentUserId,
-                userId = "",
-                username = "",
-                date = date,
-                timeSlot = timeSlot,
-                status = "available",
-                municipality = "",
-                pwdType = ""
-            )
-            newDoc.set(newAppointment)
-            savedAvailability.add(newAppointment)
+
+        if (!existsInState) {
+            // Defensive Firestore query to double-check
+            db.collection("appointments")
+                .whereEqualTo("caregiverId", currentUserId)
+                .whereEqualTo("date", date)
+                .whereEqualTo("timeSlot", timeSlot)
+                .get()
+                .addOnSuccessListener { querySnapshot ->
+                    if (querySnapshot.isEmpty) {
+                        val newDoc = db.collection("appointments").document()
+                        val newAppointment = Appointment(
+                            id = newDoc.id,
+                            caregiverId = currentUserId,
+                            userId = "",
+                            username = "",
+                            date = date,
+                            timeSlot = timeSlot,
+                            status = "available",
+                            municipality = "",
+                            pwdType = ""
+                        )
+                        newDoc.set(newAppointment)
+                        savedAvailability.add(newAppointment)
+                    }
+                }
         }
     }
 }
+
 

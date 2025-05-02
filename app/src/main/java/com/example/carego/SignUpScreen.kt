@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,6 +36,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,13 +55,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.carego.helpers.AddressData
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,13 +86,13 @@ fun SignUpScreen(navController: NavController) {
     var pwdType by remember { mutableStateOf("") }
 
     var email by remember { mutableStateOf("") }
-    var contactNumber by remember { mutableStateOf("") }
+    var contactNumber by remember { mutableStateOf("09") }
     var selectedMunicipality by remember { mutableStateOf("") }
     var selectedBarangay by remember { mutableStateOf("") }
     var street by remember { mutableStateOf("") }
     var houseNumber by remember { mutableStateOf("") }
     var emergencyName by remember { mutableStateOf("") }
-    var emergencyNumber by remember { mutableStateOf("") }
+    var emergencyNumber by remember { mutableStateOf("09") }
 
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -209,51 +213,51 @@ fun SignUpScreen(navController: NavController) {
             )
 
             when (currentStep) {
-                0 -> {
-                    Text("Select Type", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        0 -> {
+                            Text("Select Type", fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Image(
-                                painter = painterResource(id = R.drawable.caregologo),
-                                contentDescription = "User Logo",
-                                modifier = Modifier.size(80.dp)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = {
-                                userType = "User"
-                                currentStep = 1
-                            }) {
-                                Text("User")
+                            Row(
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.caregologo),
+                                        contentDescription = "User Logo",
+                                        modifier = Modifier.size(80.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(onClick = {
+                                        userType = "User"
+                                        currentStep = 1
+                                    }) {
+                                        Text("User")
+                                    }
+                                }
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.caregiverlogo),
+                                        contentDescription = "Caregiver Logo",
+                                        modifier = Modifier.size(80.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(onClick = {
+                                        userType = "Caregiver"
+                                        currentStep = 1
+                                    }) {
+                                        Text("Caregiver")
+                                    }
+                                }
                             }
                         }
 
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Image(
-                                painter = painterResource(id = R.drawable.caregiverlogo),
-                                contentDescription = "Caregiver Logo",
-                                modifier = Modifier.size(80.dp)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = {
-                                userType = "Caregiver"
-                                currentStep = 1
-                            }) {
-                                Text("Caregiver")
-                            }
-                        }
-                    }
-                }
-
-                1 -> {
-                    // Personal Info Step
+                        1 -> {
+                            // Personal Info Step
                     PersonalInfoStep(
                         userType = userType,
                         lastName = lastName,
@@ -405,7 +409,10 @@ fun SignUpScreen(navController: NavController) {
                                 Toast.makeText(context, "Please complete all fields.", Toast.LENGTH_SHORT).show()
                                 return@AccountAccessStepUnified
                             }
-
+                            if (!username.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+                                Toast.makeText(context, "Username can only contain letters, numbers, dots, and underscores.", Toast.LENGTH_SHORT).show()
+                                return@AccountAccessStepUnified
+                            }
                             if (username.contains(" ")) {
                                 Toast.makeText(context, "Username cannot contain spaces.", Toast.LENGTH_SHORT).show()
                                 return@AccountAccessStepUnified
@@ -503,16 +510,21 @@ fun ContactInfoStepUnified(
         )
 
         OutlinedTextField(
-            value = contactNumber,
+            value = contactNumber.removePrefix("09"),
             onValueChange = { input ->
-                val filtered = input.filter { it.isDigit() }.take(11)
-                onContactNumberChange(filtered)
+                val filtered = input.filter { it.isDigit() }.take(9)
+                onContactNumberChange("09$filtered")
             },
             label = { Text("Contact Number") },
+            leadingIcon = { Text("09") },
             isError = errors["contactNumber"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         )
+
+
 
         Spacer(modifier = Modifier.height(16.dp))
         Text("Address", fontWeight = FontWeight.SemiBold)
@@ -570,12 +582,18 @@ fun ContactInfoStepUnified(
             )
 
             OutlinedTextField(
-                value = emergencyNumber ?: "",
-                onValueChange = { input -> onEmergencyNumberChange?.invoke(input.filter { it.isDigit() }.take(11)) },
+                value = emergencyNumber?.removePrefix("09") ?: "",
+                onValueChange = { input ->
+                    val filtered = input.filter { it.isDigit() }.take(9)
+                    onEmergencyNumberChange?.invoke("09$filtered")
+                },
                 label = { Text("Emergency Contact Number") },
+                leadingIcon = { Text("09") },
                 isError = errors["emergencyNumber"] == true,
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
             )
         }
 
@@ -614,7 +632,11 @@ fun AccountAccessStepUnified(
     ) {
         OutlinedTextField(
             value = username,
-            onValueChange = { if (!it.contains(" ")) onUsernameChange(it) },
+            onValueChange = {
+                val cleaned = it.filter { c -> c.isLetterOrDigit() || c == '.' || c == '_' }
+                onUsernameChange(cleaned)
+            }
+            ,
             label = { Text("Username") },
             isError = errors["username"] == true,
             singleLine = true,
@@ -671,113 +693,68 @@ fun FinalSubmitStepUnified(
     onBack: () -> Unit,
     onSubmit: () -> Unit
 ) {
+    var termsChecked by remember { mutableStateOf(false) }
+    var privacyChecked by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = "Review & Submit",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Please review your information before submitting.")
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ✅ Insert checkboxes with dialog
+        TermsAndPrivacyCheckboxes(
+            termsChecked = termsChecked,
+            privacyChecked = privacyChecked,
+            onTermsChecked = { termsChecked = it },
+            onPrivacyChecked = { privacyChecked = it }
         )
 
-        Text("Please review your information before submitting.", fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // You can add summary display here if needed
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Button(onClick = onBack, modifier = Modifier.weight(1f)) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Button(
+                onClick = onBack,
+                modifier = Modifier.weight(1f).padding(end = 8.dp)
+            ) {
                 Text("Back")
             }
-            Spacer(modifier = Modifier.width(8.dp))
+
             Button(
-                onClick = {
-                    if (!isLoading) onSubmit()
-                },
-                modifier = Modifier.weight(1f),
-                enabled = !isLoading
+                onClick = onSubmit,
+                enabled = termsChecked && privacyChecked && !isLoading,
+                modifier = Modifier.weight(1f).padding(start = 8.dp)
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 } else {
                     Text("Sign Up")
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
+        Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "A verification email will be sent. You must verify before you can log in.",
-            fontSize = 14.sp,
-            color = Color.Gray
+            "A verification email will be sent. You must verify before you can log in.",
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center
         )
     }
 }
-
-fun createUserOrCaregiverAccount(
-    context: Context,
-    navController: NavController,
-    isCaregiver: Boolean,
-    userId: String,
-    data: Map<String, Any?>,
-    onLoadingChange: (Boolean) -> Unit
-) {
-    onLoadingChange(true)
-
-    val db = FirebaseFirestore.getInstance()
-    val collectionName = if (isCaregiver) "caregivers" else "users"
-
-    val finalData = mutableMapOf<String, Any?>(
-        "username" to data["username"]!!,
-        "password" to data["password"]!!,
-        "email" to data["email"]!!,
-        "contactNumber" to data["contactNumber"]!!,
-        "firstName" to data["firstName"]!!,
-        "lastName" to data["lastName"]!!,
-        "middleName" to data["middleName"],
-        "gender" to data["gender"]!!,
-        "birthday" to "${data["birthMonth"]}/${data["birthDay"]}/${data["birthYear"]}",
-        "address" to "${data["street"]}, ${data["houseNumber"]}, ${data["barangay"]}, ${data["municipality"]}, Pampanga",
-        "profileImageUrl" to "",
-        "isVerified" to false
-    )
-
-    if (isCaregiver) {
-        finalData["license"] = if (data["noLicense"] == true) "Unlicensed" else data["profession"]!!
-    } else {
-        finalData["pwdType"] = data["pwdType"]!!
-        finalData["emergencyName"] = data["emergencyName"]!!
-        finalData["emergencyNumber"] = data["emergencyNumber"]!!
-    }
-
-    db.collection(collectionName).document(userId)
-        .set(finalData)
-        .addOnSuccessListener {
-            Toast.makeText(context, "Account created successfully! Please log in.", Toast.LENGTH_SHORT).show()
-
-            // Return to login screen (don't stay logged in)
-            navController.navigate("user_login_screen") {
-                popUpTo("signup_screen") { inclusive = true }
-            }
-        }
-        .addOnFailureListener {
-            Toast.makeText(context, "Failed to save data.", Toast.LENGTH_SHORT).show()
-        }
-        .addOnCompleteListener {
-            onLoadingChange(false)
-        }
-}
-
 
 @Composable
 fun PersonalInfoStep(
@@ -903,7 +880,13 @@ fun PersonalInfoStep(
         if (userType == "User") {
             DropdownBox(
                 label = "Type of PWD",
-                options = listOf("Visual", "Hearing", "Mobility", "Cognitive", "Others"),
+                options = listOf("Visual Disability",
+                    "Hearing Disability",
+                    "Speech and Language Disability",
+                    "Physical Disability",
+                    "Mental/Intellectual Disability",
+                    "Psychosocial Disability",
+                    "Disability Due to Chronic Illness",),
                 selectedOption = pwdType,
                 onOptionSelected = onPWDTypeChange,
                 error = errors["pwdType"] == true
@@ -1095,3 +1078,230 @@ fun validateContactInfoForCareGiver(
 
     return isValid
 }
+@Composable
+fun TermsAndPrivacyCheckboxes(
+    termsChecked: Boolean,
+    privacyChecked: Boolean,
+    onTermsChecked: (Boolean) -> Unit,
+    onPrivacyChecked: (Boolean) -> Unit
+) {
+    val showTermsDialog = remember { mutableStateOf(false) }
+    val showPrivacyDialog = remember { mutableStateOf(false) }
+
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clickable {
+                    if (!termsChecked) showTermsDialog.value = true
+                }
+        ) {
+            Checkbox(
+                checked = termsChecked,
+                onCheckedChange = {
+                    if (!termsChecked) showTermsDialog.value = true
+                    else onTermsChecked(false)
+                }
+            )
+            Text("I agree to the Terms and Conditions")
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clickable {
+                    if (!privacyChecked) showPrivacyDialog.value = true
+                }
+        ) {
+            Checkbox(
+                checked = privacyChecked,
+                onCheckedChange = {
+                    if (!privacyChecked) showPrivacyDialog.value = true
+                    else onPrivacyChecked(false)
+                }
+            )
+            Text("I agree to the Data Privacy Policy")
+        }
+
+        if (showTermsDialog.value) {
+            ScrollableAgreementDialog(
+                title = "Terms and Conditions",
+                content = "Welcome to CareGo – We Care As You Go.\n" +
+                        "\n" +
+                        "These Terms and Conditions govern your use of the CareGo mobile application and services. By using the app, you agree to these Terms. If you disagree, please discontinue use.\n" +
+                        "\n" +
+                        "1. Eligibility\n" +
+                        "You must be 18+ or legally authorized to act for a PWD. Provide truthful information at all times.\n" +
+                        "\n" +
+                        "2. Nature of Service\n" +
+                        "CareGo connects users to licensed healthcare professionals. We do not employ or manage them.\n" +
+                        "\n" +
+                        "3. User Responsibilities\n" +
+                        "- Provide accurate information\n" +
+                        "- Ensure a respectful environment\n" +
+                        "- Use only for lawful purposes\n" +
+                        "- Report issues promptly\n" +
+                        "\n" +
+                        "4. Healthcare Worker Responsibilities\n" +
+                        "- Submit valid credentials\n" +
+                        "- Follow ethical standards\n" +
+                        "- Maintain client privacy\n" +
+                        "\n" +
+                        "5. Bookings & Cancellations\n" +
+                        "- Subject to caregiver availability\n" +
+                        "- Follow app’s Cancellation Policy\n" +
+                        "- No-shows may incur charges\n" +
+                        "\n" +
+                        "6. Payments & Refunds\n" +
+                        "- Secure in-app payments\n" +
+                        "- Transparent fees\n" +
+                        "- Refunds reviewed if requested within 7 days\n" +
+                        "\n" +
+                        "7. Background Checks\n" +
+                        "- Performed on professionals for safety\n" +
+                        "\n" +
+                        "8. Privacy\n" +
+                        "- Governed by our Privacy Policy\n" +
+                        "\n" +
+                        "9. Limitation of Liability\n" +
+                        "CareGo is not liable for:\n" +
+                        "- Injuries or damages\n" +
+                        "- Provider mistakes\n" +
+                        "- Technical disruptions\n" +
+                        "\n" +
+                        "10. Account Suspension\n" +
+                        "Accounts may be suspended for violations or unsafe behavior.\n" +
+                        "\n" +
+                        "11. Updates\n" +
+                        "Terms may be updated. Continued use means acceptance.\n" +
+                        "\n" +
+                        "12. Governing Law\n" +
+                        "Under Philippine law. Disputes resolved in Pampanga courts.\n" +
+                        "\n" +
+                        "13. Contact\n" +
+                        "Questions? Use the Contact section in the app.",
+                onCancel = { showTermsDialog.value = false },
+                onAgree = {
+                    onTermsChecked(true)
+                    showTermsDialog.value = false
+                }
+            )
+        }
+
+        if (showPrivacyDialog.value) {
+            ScrollableAgreementDialog(
+                title = "Data Privacy Policy",
+                content = "Effective Date: [Insert Date]\n" +
+                        "\n" +
+                        "At CareGo, your privacy is our priority. We uphold your rights under the Data Privacy Act of 2012 (RA 10173) and ensure responsible handling of your personal data.\n" +
+                        "\n" +
+                        "1. Information We Collect\n" +
+                        "a. Personal Info – Name, birthdate, contact, address, ID\n" +
+                        "b. Health Info – Disabilities or medical info (with consent)\n" +
+                        "c. Provider Info – License, certifications, experience\n" +
+                        "d. Payment Info – Processed via third-party gateways\n" +
+                        "e. Usage Data – Device, IP, crash logs, usage stats\n" +
+                        "\n" +
+                        "2. How We Use Your Data\n" +
+                        "- To match you with licensed healthcare providers\n" +
+                        "- Process bookings and payments\n" +
+                        "- Communicate updates and alerts\n" +
+                        "- Verify identities and ensure safety\n" +
+                        "- Improve our platform and services\n" +
+                        "\n" +
+                        "3. Sharing of Information\n" +
+                        "We never sell your data. We only share with:\n" +
+                        "- Care providers (for service coordination)\n" +
+                        "- Secure third-party processors (e.g., payment systems)\n" +
+                        "- Legal authorities when required by law\n" +
+                        "\n" +
+                        "4. Data Retention\n" +
+                        "We keep your data only as long as needed to provide services and comply with laws. You can request deletion with some limitations.\n" +
+                        "\n" +
+                        "5. Your Rights\n" +
+                        "Under the Data Privacy Act, you can:\n" +
+                        "- Access, update, correct, or delete your data\n" +
+                        "- Withdraw consent anytime\n" +
+                        "- File complaints with the National Privacy Commission\n" +
+                        "\n" +
+                        "6. Data Security\n" +
+                        "We apply strict physical, technical, and organizational safeguards, including encryption, access control, and regular audits.\n" +
+                        "\n" +
+                        "7. Children's Privacy\n" +
+                        "CareGo is for users 18+. Minors may use the app only through authorized guardians.\n" +
+                        "\n" +
+                        "8. Updates to Policy\n" +
+                        "We’ll inform you of major changes via the app or email. Continued use means you accept the updated terms.\n" +
+                        "\n" +
+                        "9. Contact\n" +
+                        "Need help? Contact our Data Protection Officer via [Insert Email]",
+                onCancel = { showPrivacyDialog.value = false },
+                onAgree = {
+                    onPrivacyChecked(true)
+                    showPrivacyDialog.value = false
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun ScrollableAgreementDialog(
+    title: String,
+    content: String,
+    onCancel: () -> Unit,
+    onAgree: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+    var agreeEnabled by remember { mutableStateOf(false) }
+
+    LaunchedEffect(scrollState.maxValue) {
+        snapshotFlow { scrollState.value }
+            .collect { value ->
+                agreeEnabled = value >= scrollState.maxValue
+            }
+    }
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        confirmButton = {
+            TextButton(
+                onClick = onAgree,
+                enabled = agreeEnabled
+            ) {
+                Text("Agree", color = if (agreeEnabled) MaterialTheme.colorScheme.primary else Color.Gray)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
+                Text("Cancel")
+            }
+        },
+        title = {
+            Text(
+                text = title,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .height(320.dp)
+                    .verticalScroll(scrollState)
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 20.sp
+                )
+            }
+        },
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 8.dp
+    )
+}
+
+
