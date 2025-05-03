@@ -1,5 +1,6 @@
 package com.example.carego.screens.caregiver.mainscreen
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -54,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,6 +70,7 @@ import com.example.carego.screens.user.mainscreen.extractMunicipality
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -88,7 +91,7 @@ fun CareGiverMainScreen(navController: NavController) {
     var licenseType by remember { mutableStateOf("") }
     val confirmedAppointments = remember { mutableStateListOf<Appointment>() } // ⬅️ you forgot to declare this!
     val pendingAppointments = remember { mutableStateListOf<Appointment>() }
-
+    val ongoingAppointments = remember { mutableStateListOf<Appointment>() }
 
     var showEditDialogForDate by remember { mutableStateOf<String?>(null) }
     var currentEditTimes by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -114,6 +117,7 @@ fun CareGiverMainScreen(navController: NavController) {
                     savedAvailability.clear()
                     pendingAppointments.clear()
                     confirmedAppointments.clear()
+                    ongoingAppointments.clear()
 
                     val jobs = mutableListOf<Job>()
 
@@ -170,6 +174,37 @@ fun CareGiverMainScreen(navController: NavController) {
                                 }
                                 jobs.add(job)
                             }
+                            "ongoing" -> {
+                                val job = coroutineScope.launch {
+                                    try {
+                                        val userDoc = db.collection("users").document(appointment.userId).get().await()
+                                        val firstName = userDoc.getString("firstName") ?: ""
+                                        val lastName = userDoc.getString("lastName") ?: ""
+                                        val middleName = userDoc.getString("middleName") ?: ""
+                                        val fullName = listOf(lastName, firstName, middleName)
+                                            .filter { it.isNotEmpty() && it.lowercase() != "null" }
+                                            .joinToString(" ")
+
+                                        val address = userDoc.getString("address") ?: ""
+                                        val enriched = appointment.copy(
+                                            patientName = fullName,
+                                            location = address,
+                                            time = appointment.timeSlot
+                                        )
+
+                                        if (ongoingAppointments.none {
+                                                it.date == enriched.date &&
+                                                        it.time == enriched.time &&
+                                                        it.patientName == enriched.patientName
+                                            }) {
+                                            ongoingAppointments.add(enriched)
+                                        }
+
+                                    } catch (_: Exception) {}
+                                }
+                                jobs.add(job)
+                            }
+
                         }
                     }
 
@@ -285,7 +320,16 @@ fun CareGiverMainScreen(navController: NavController) {
             }
 
     UpcomingAppointmentsList(confirmedAppointments, navController)
+    OngoingAppointmentsList(ongoingAppointments, navController)
 
+    Button(
+        onClick = { navController.navigate("transaction_history") },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Text("View Transaction History")
+    }
     Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -350,9 +394,11 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    var showStartDialog by remember { mutableStateOf(false) }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Button(
                             onClick = {
@@ -361,7 +407,46 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
                         ) {
                             Text("Chat")
                         }
+
+                        Button(
+                            onClick = { showStartDialog = true },
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Text("Start")
+                        }
                     }
+
+                    if (showStartDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showStartDialog = false },
+                            title = { Text("Start Appointment") },
+                            text = { Text("Are you sure you want to start this appointment?") },
+                            confirmButton = {
+                                val context = LocalContext.current
+                                val coroutineScope = rememberCoroutineScope()
+
+                                Button(onClick = {
+                                    coroutineScope.launch {
+                                        FirebaseFirestore.getInstance()
+                                            .collection("appointments")
+                                            .document(appointment.id)
+                                            .update("status", "Ongoing")
+                                        delay(2000)
+                                        Toast.makeText(context, "Appointment started.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    showStartDialog = false
+                                }) {
+                                    Text("Yes, Start")
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(onClick = { showStartDialog = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
+
                 }
             }
         }
@@ -644,3 +729,96 @@ fun updateAvailability(
 }
 
 
+@Composable
+fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavController) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val db = FirebaseFirestore.getInstance()
+
+    Text(
+        text = "Ongoing Appointments",
+        fontSize = 18.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontFamily = FontFamily.SansSerif,
+        modifier = Modifier.padding(top = 16.dp)
+    )
+
+    if (appointments.isEmpty()) {
+        Text(
+            text = "No ongoing appointments yet.",
+            fontSize = 14.sp,
+            modifier = Modifier.padding(top = 8.dp),
+            fontFamily = FontFamily.SansSerif
+        )
+    } else {
+        appointments.forEach { appointment ->
+            var showFinishDialog by remember { mutableStateOf(false) }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Patient: ${appointment.patientName}", fontFamily = FontFamily.SansSerif)
+                    Text("Location: ${appointment.location}", fontFamily = FontFamily.SansSerif)
+                    Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
+                    Text("Time: ${appointment.time}", fontFamily = FontFamily.SansSerif)
+                    Text("Status: Ongoing", fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Button(
+                            onClick = {
+                                navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
+                            }
+                        ) {
+                            Text("Chat")
+                        }
+
+                        Button(
+                            onClick = {
+                                showFinishDialog = true
+                            }
+                        ) {
+                            Text("Mark as Done")
+                        }
+                    }
+
+                    if (showFinishDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showFinishDialog = false },
+                            title = { Text("Finish Appointment") },
+                            text = { Text("Are you sure this appointment is completed?") },
+                            confirmButton = {
+                                Button(onClick = {
+                                    coroutineScope.launch {
+                                        db.collection("appointments")
+                                            .document(appointment.id)
+                                            .update("status", "Finished")
+
+                                        delay(2000)
+                                        Toast.makeText(context, "Appointment marked as finished.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    showFinishDialog = false
+                                }) {
+                                    Text("Yes, Finish")
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(onClick = { showFinishDialog = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

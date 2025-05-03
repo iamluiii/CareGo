@@ -1,5 +1,6 @@
 package com.example.carego.screens.caregiver.mainscreen
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.firebase.firestore.FieldValue
@@ -40,11 +43,16 @@ fun PendingBookingDetailsScreen(appointmentId: String, navController: NavControl
     var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     var showDeclineDialog by remember { mutableStateOf(false) }
+    var appointmentStatus by remember { mutableStateOf("") }
+    var showStartDialog by remember { mutableStateOf(false) }
+    var showDoneDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(appointmentId) {
         db.collection("appointments").document(appointmentId).get()
             .addOnSuccessListener { appointment ->
                 val userId = appointment.getString("userId") ?: return@addOnSuccessListener
+                appointmentStatus = appointment.getString("status") ?: ""
 
                 db.collection("users").document(userId).get()
                     .addOnSuccessListener { userDoc ->
@@ -92,32 +100,50 @@ fun PendingBookingDetailsScreen(appointmentId: String, navController: NavControl
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                updateAppointmentStatus(appointmentId, "Confirmed")
-                                delay(2000)
-                                navController.popBackStack()
+                if (appointmentStatus == "Pending") {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    updateAppointmentStatus(appointmentId, "Upcoming")
+                                    delay(2000)
+                                    navController.popBackStack()
+                                }
                             }
+                        ) {
+                            Text("Accept")
                         }
-                    ) {
-                        Text("Accept")
+
+                        Button(
+                            onClick = { showDeclineDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Decline")
+                        }
                     }
 
-                    Button(
-                        onClick = { showDeclineDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Decline")
-                    }
-
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                if (appointmentStatus == "Upcoming") {
+                    Button(onClick = { showStartDialog = true }) {
+                        Text("Start Appointment")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                if (appointmentStatus == "Ongoing") {
+                    Button(
+                        onClick = { showDoneDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Mark as Done")
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
                 Button(
                     onClick = {
@@ -127,8 +153,9 @@ fun PendingBookingDetailsScreen(appointmentId: String, navController: NavControl
                 ) {
                     Text("Cancel")
                 }
+
                 if (showDeclineDialog) {
-                    androidx.compose.material3.AlertDialog(
+                    AlertDialog(
                         onDismissRequest = { showDeclineDialog = false },
                         title = { Text("Confirm Decline") },
                         text = { Text("Are you sure you want to decline this booking?") },
@@ -154,6 +181,57 @@ fun PendingBookingDetailsScreen(appointmentId: String, navController: NavControl
                     )
                 }
 
+                if (showStartDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showStartDialog = false },
+                        title = { Text("Start Appointment") },
+                        text = { Text("Are you sure you want to mark this appointment as Ongoing?") },
+                        confirmButton = {
+                            Button(onClick = {
+                                scope.launch {
+                                    updateAppointmentStatus(appointmentId, "Ongoing")
+                                    delay(2000)
+                                    appointmentStatus = "Ongoing"
+                                    Toast.makeText(context, "Appointment started.", Toast.LENGTH_SHORT).show()
+                                }
+                                showStartDialog = false
+                            }) {
+                                Text("Yes, Start")
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = { showStartDialog = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+
+                if (showDoneDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDoneDialog = false },
+                        title = { Text("Finish Appointment") },
+                        text = { Text("Are you sure you want to mark this appointment as Finished?") },
+                        confirmButton = {
+                            Button(onClick = {
+                                scope.launch {
+                                    updateAppointmentStatus(appointmentId, "Finished")
+                                    delay(2000)
+                                    Toast.makeText(context, "Appointment marked as finished.", Toast.LENGTH_SHORT).show()
+                                    navController.popBackStack()
+                                }
+                                showDoneDialog = false
+                            }) {
+                                Text("Yes, Finish")
+                            }
+                        },
+                        dismissButton = {
+                            OutlinedButton(onClick = { showDoneDialog = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
             }
         }
     }

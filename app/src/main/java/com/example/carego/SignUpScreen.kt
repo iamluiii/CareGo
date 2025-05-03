@@ -894,7 +894,7 @@ fun PersonalInfoStep(
         } else {
             DropdownBox(
                 label = "Profession",
-                options = listOf("Nurse", "Doctor", "Midwife", "Therapist", "Caregiver", "Paramedic", "Dentist"),
+                options = listOf("Nurse", "Midwife", "Therapist", "Caregiver", "Paramedic"),
                 selectedOption = profession,
                 onOptionSelected = {
                     onProfessionChange(it)

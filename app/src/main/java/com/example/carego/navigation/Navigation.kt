@@ -14,6 +14,7 @@ import com.example.carego.screens.caregiver.forgetpassword.CareGiverForgetPasswo
 import com.example.carego.screens.caregiver.mainscreen.CareGiverMainScreen
 import com.example.carego.screens.caregiver.mainscreen.CareGiverProfileScreen
 import com.example.carego.screens.caregiver.mainscreen.PendingBookingDetailsScreen
+import com.example.carego.screens.caregiver.mainscreen.TransactionHistoryScreen
 import com.example.carego.screens.user.forgotpasswordscreen.UserForgetPasswordScreen
 import com.example.carego.screens.user.mainscreen.BookingScreen
 import com.example.carego.screens.user.mainscreen.ProfileScreen
@@ -58,6 +59,14 @@ fun CareGoNavGraph(navController: NavHostController) {
         composable(Screen.LauncherScreen.route) {
             LauncherScreen(navController)
         }
+        composable("user_forgot_password") {
+            UserForgetPasswordScreen(
+                navToLogin = { navController.navigate("login") }
+            )
+        }
+        composable("transaction_history") {
+            TransactionHistoryScreen(navController)
+        }
 
         composable(route = Screen.UserLoginScreen.route) {
             LoginScreen(navController)
@@ -67,8 +76,13 @@ fun CareGoNavGraph(navController: NavHostController) {
         }
 
         composable(route = Screen.UserForgetPasswordScreen.route) {
-            UserForgetPasswordScreen()
+            UserForgetPasswordScreen(
+                navToLogin = {
+                    navController.navigate(Screen.UserLoginScreen.route)
+                }
+            )
         }
+
         composable(route = Screen.CareGiverForgetPasswordScreen.route) {
             CareGiverForgetPasswordScreen()
         }
