@@ -6,9 +6,11 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.carego.ChatHistoryScreen
 import com.example.carego.ChatScreen
 import com.example.carego.LauncherScreen
 import com.example.carego.LoginScreen
+import com.example.carego.SettingsScreen
 import com.example.carego.SignUpScreen
 import com.example.carego.screens.caregiver.forgetpassword.CareGiverForgetPasswordScreen
 import com.example.carego.screens.caregiver.mainscreen.CareGiverMainScreen
@@ -81,6 +83,13 @@ fun CareGoNavGraph(navController: NavHostController) {
                     navController.navigate(Screen.UserLoginScreen.route)
                 }
             )
+        }
+        composable("chat_history") {
+            ChatHistoryScreen(navController)
+        }
+
+        composable("settings") {
+            SettingsScreen(navController)
         }
 
         composable(route = Screen.CareGiverForgetPasswordScreen.route) {

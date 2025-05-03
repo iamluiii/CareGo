@@ -1,6 +1,5 @@
 package com.example.carego.screens.caregiver.mainscreen
 
-import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,8 +25,12 @@ import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Scaffold
 import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.rememberDismissState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,6 +41,7 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -54,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -70,13 +75,9 @@ import com.example.carego.screens.user.mainscreen.extractMunicipality
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-
-
-
 
 
 @OptIn(ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
@@ -97,17 +98,25 @@ fun CareGiverMainScreen(navController: NavController) {
     var currentEditTimes by remember { mutableStateOf<List<String>>(emptyList()) }
     var showAddAvailabilityDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        loadCaregiverProfile(
-            onProfileLoaded = { loadedUsername, loadedFullName, loadedLicenseType ->
-                username = loadedUsername
-                fullName = loadedFullName
-                licenseType = loadedLicenseType
-            }
-        )
-    }
+    val hasLoadedProfile = remember { mutableStateOf(false) }
+
     LaunchedEffect(currentUserId) {
-        if (currentUserId != null) {
+        if (currentUserId != null && !hasLoadedProfile.value) {
+            hasLoadedProfile.value = true
+            loadCaregiverProfile(
+                onProfileLoaded = { loadedUsername, loadedFullName, loadedLicenseType ->
+                    username = loadedUsername
+                    fullName = loadedFullName
+                    licenseType = loadedLicenseType
+                }
+            )
+        }
+    }
+    val hasLoadedAppointments = remember { mutableStateOf(false) }
+    LaunchedEffect(currentUserId) {
+        if (currentUserId != null && !hasLoadedAppointments.value) {
+            hasLoadedAppointments.value = true
+
             val db = FirebaseFirestore.getInstance()
             db.collection("appointments")
                 .whereEqualTo("caregiverId", currentUserId)
@@ -121,91 +130,103 @@ fun CareGiverMainScreen(navController: NavController) {
 
                     val jobs = mutableListOf<Job>()
 
-                    for (document in snapshot.documents) {
-                        val appointment = Appointment(
-                            id = document.id,
-                            caregiverId = document.getString("caregiverId") ?: "",
-                            userId = document.getString("userId") ?: "",
-                            username = document.getString("caregiverUsername") ?: "",
-                            date = document.getString("date") ?: "",
-                            timeSlot = document.getString("timeSlot") ?: "",
-                            status = document.getString("status") ?: "",
-                            municipality = document.getString("municipality") ?: "",
-                            pwdType = document.getString("pwdType") ?: ""
-                        )
 
-                        when (appointment.status.lowercase()) {
-                            "available" -> {
-                                if (savedAvailability.none { it.id == appointment.id }) {
-                                    savedAvailability.add(appointment)
-                                }
-                            }
+                    coroutineScope.launch {
+                        val jobs = snapshot.documents.map { doc ->
+                            launch {
+                                val status = doc.getString("status") ?: ""
+                                val userId = doc.getString("userId") ?: ""
+                                val caregiverUsername = doc.getString("caregiverUsername") ?: ""
 
-
-                            "pending" -> pendingAppointments.add(appointment)
-
-                            "confirmed" -> {
-                                val job = coroutineScope.launch {
+                                val username = if (status.lowercase() == "pending" && userId.isNotEmpty()) {
                                     try {
-                                        val userDoc = db.collection("users").document(appointment.userId).get().await()
-                                        val firstName = userDoc.getString("firstName") ?: ""
-                                        val lastName = userDoc.getString("lastName") ?: ""
-                                        val middleName = userDoc.getString("middleName") ?: ""
-                                        val fullName = listOf(lastName, firstName, middleName)
-                                            .filter { it.isNotEmpty() && it.lowercase() != "null" }
-                                            .joinToString(" ")
-
-                                        val address = userDoc.getString("address") ?: ""
-                                        val enriched = appointment.copy(
-                                            patientName = fullName,
-                                            location = address,
-                                            time = appointment.timeSlot
-                                        )
-
-                                        if (confirmedAppointments.none {
-                                                it.date == enriched.date &&
-                                                        it.time == enriched.time &&
-                                                        it.patientName == enriched.patientName
-                                            }) {
-                                            confirmedAppointments.add(enriched)
-                                        }
-
-                                    } catch (_: Exception) {}
+                                        val userDoc = db.collection("users").document(userId).get().await()
+                                        userDoc.getString("username") ?: "Unknown"
+                                    } catch (e: Exception) {
+                                        "Unknown"
+                                    }
+                                } else {
+                                    caregiverUsername
                                 }
-                                jobs.add(job)
-                            }
-                            "ongoing" -> {
-                                val job = coroutineScope.launch {
-                                    try {
-                                        val userDoc = db.collection("users").document(appointment.userId).get().await()
-                                        val firstName = userDoc.getString("firstName") ?: ""
-                                        val lastName = userDoc.getString("lastName") ?: ""
-                                        val middleName = userDoc.getString("middleName") ?: ""
-                                        val fullName = listOf(lastName, firstName, middleName)
-                                            .filter { it.isNotEmpty() && it.lowercase() != "null" }
-                                            .joinToString(" ")
 
-                                        val address = userDoc.getString("address") ?: ""
-                                        val enriched = appointment.copy(
-                                            patientName = fullName,
-                                            location = address,
-                                            time = appointment.timeSlot
-                                        )
+                                val appointment = Appointment(
+                                    id = doc.id,
+                                    caregiverId = doc.getString("caregiverId") ?: "",
+                                    userId = userId,
+                                    username = username,
+                                    date = doc.getString("date") ?: "",
+                                    timeSlot = doc.getString("timeSlot") ?: "",
+                                    status = status,
+                                    municipality = doc.getString("municipality") ?: "",
+                                    pwdType = doc.getString("pwdType") ?: ""
+                                )
 
-                                        if (ongoingAppointments.none {
-                                                it.date == enriched.date &&
-                                                        it.time == enriched.time &&
-                                                        it.patientName == enriched.patientName
-                                            }) {
-                                            ongoingAppointments.add(enriched)
+                                when (status.lowercase()) {
+                                    "available" -> {
+                                        if (savedAvailability.none { it.id == appointment.id }) {
+                                            savedAvailability.add(appointment)
                                         }
+                                    }
+                                    "pending" -> pendingAppointments.add(appointment)
 
-                                    } catch (_: Exception) {}
+                                    "confirmed" -> {
+                                        try {
+                                            val userDoc = db.collection("users").document(appointment.userId).get().await()
+                                            val firstName = userDoc.getString("firstName") ?: ""
+                                            val lastName = userDoc.getString("lastName") ?: ""
+                                            val middleName = userDoc.getString("middleName") ?: ""
+                                            val fullName = listOf(lastName, firstName, middleName)
+                                                .filter { it.isNotEmpty() && it.lowercase() != "null" }
+                                                .joinToString(" ")
+
+                                            val address = userDoc.getString("address") ?: ""
+                                            val enriched = appointment.copy(
+                                                patientName = fullName,
+                                                location = address,
+                                                time = appointment.timeSlot
+                                            )
+
+                                            if (confirmedAppointments.none {
+                                                    it.date == enriched.date &&
+                                                            it.time == enriched.time &&
+                                                            it.patientName == enriched.patientName
+                                                }) {
+                                                confirmedAppointments.add(enriched)
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+
+                                    "ongoing" -> {
+                                        try {
+                                            val userDoc = db.collection("users").document(appointment.userId).get().await()
+                                            val firstName = userDoc.getString("firstName") ?: ""
+                                            val lastName = userDoc.getString("lastName") ?: ""
+                                            val middleName = userDoc.getString("middleName") ?: ""
+                                            val fullName = listOf(lastName, firstName, middleName)
+                                                .filter { it.isNotEmpty() && it.lowercase() != "null" }
+                                                .joinToString(" ")
+
+                                            val address = userDoc.getString("address") ?: ""
+                                            val enriched = appointment.copy(
+                                                patientName = fullName,
+                                                location = address,
+                                                time = appointment.timeSlot
+                                            )
+
+                                            if (ongoingAppointments.none {
+                                                    it.date == enriched.date &&
+                                                            it.time == enriched.time &&
+                                                            it.patientName == enriched.patientName
+                                                }) {
+                                                ongoingAppointments.add(enriched)
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
                                 }
-                                jobs.add(job)
                             }
-
                         }
+
+                        jobs.joinAll() // wait for all launched coroutines to finish
                     }
 
                     coroutineScope.launch {
@@ -219,12 +240,16 @@ fun CareGiverMainScreen(navController: NavController) {
             TopAppBar(
                 title = { Text("Caregiver Dashboard") }
             )
+        },
+        bottomBar = {
+            CareGiverBottomBar(navController)
+
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding())
+                .padding(innerPadding)
                 .padding(horizontal = 24.dp)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -322,14 +347,7 @@ fun CareGiverMainScreen(navController: NavController) {
     UpcomingAppointmentsList(confirmedAppointments, navController)
     OngoingAppointmentsList(ongoingAppointments, navController)
 
-    Button(
-        onClick = { navController.navigate("transaction_history") },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
-    ) {
-        Text("View Transaction History")
-    }
+
     Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -364,6 +382,8 @@ fun CareGiverMainScreen(navController: NavController) {
 
 @Composable
 fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: NavController) {
+    val db = FirebaseFirestore.getInstance()
+
     Text(
         text = "Upcoming Appointments",
         fontSize = 18.sp,
@@ -380,73 +400,48 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
         )
     } else {
         appointments.forEach { appointment ->
+            var profileImageUrl by remember { mutableStateOf<String?>(null) }
+
+            LaunchedEffect(appointment.userId) {
+                db.collection("users").document(appointment.userId)
+                    .get()
+                    .addOnSuccessListener { doc ->
+                        profileImageUrl = doc.getString("profileImageUrl")
+                    }
+            }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Patient: ${appointment.patientName}", fontFamily = FontFamily.SansSerif)
-                    Text("Location: ${appointment.location}", fontFamily = FontFamily.SansSerif)
-                    Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
-                    Text("Time: ${appointment.time}", fontFamily = FontFamily.SansSerif)
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    var showStartDialog by remember { mutableStateOf(false) }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Button(
-                            onClick = {
-                                navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
-                            }
-                        ) {
-                            Text("Chat")
-                        }
-
-                        Button(
-                            onClick = { showStartDialog = true },
-                            modifier = Modifier.padding(start = 8.dp)
-                        ) {
-                            Text("Start")
-                        }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Image(
+                        painter = if (profileImageUrl != null)
+                            rememberAsyncImagePainter(profileImageUrl)
+                        else
+                            rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                        contentDescription = "Profile Image",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Username: ${appointment.username}", fontFamily = FontFamily.SansSerif)
+                        Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
+                        Text("Time: ${appointment.timeSlot}", fontFamily = FontFamily.SansSerif)
                     }
-
-                    if (showStartDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showStartDialog = false },
-                            title = { Text("Start Appointment") },
-                            text = { Text("Are you sure you want to start this appointment?") },
-                            confirmButton = {
-                                val context = LocalContext.current
-                                val coroutineScope = rememberCoroutineScope()
-
-                                Button(onClick = {
-                                    coroutineScope.launch {
-                                        FirebaseFirestore.getInstance()
-                                            .collection("appointments")
-                                            .document(appointment.id)
-                                            .update("status", "Ongoing")
-                                        delay(2000)
-                                        Toast.makeText(context, "Appointment started.", Toast.LENGTH_SHORT).show()
-                                    }
-                                    showStartDialog = false
-                                }) {
-                                    Text("Yes, Start")
-                                }
-                            },
-                            dismissButton = {
-                                OutlinedButton(onClick = { showStartDialog = false }) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
+                    Button(onClick = {
+                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
+                    }) {
+                        Text("Chat")
                     }
-
                 }
             }
         }
@@ -623,6 +618,7 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
     val db = FirebaseFirestore.getInstance()
     var pwdType by remember { mutableStateOf("") }
     var municipality by remember { mutableStateOf("") }
+    var profileImageUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(appointment.userId) {
         if (appointment.userId.isNotEmpty()) {
@@ -632,6 +628,7 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
                     pwdType = document.getString("pwdType") ?: ""
                     val address = document.getString("address") ?: ""
                     municipality = extractMunicipality(address)
+                    profileImageUrl = document.getString("profileImageUrl")
                 }
         }
     }
@@ -639,13 +636,23 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            ,
+            .padding(vertical = 4.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    )
-    {
+    ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Username: ${appointment.username}", fontFamily = FontFamily.SansSerif)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = rememberAsyncImagePainter(profileImageUrl ?: R.drawable.defaultprofileicon),
+                    contentDescription = "Profile Picture",
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Username: @${appointment.username}", fontFamily = FontFamily.SansSerif)
+            }
+
             Text("PWD Type: $pwdType", fontFamily = FontFamily.SansSerif)
             Text("Municipality: $municipality", fontFamily = FontFamily.SansSerif)
             Text("Date: ${appointment.date} | Time: ${appointment.timeSlot}", fontFamily = FontFamily.SansSerif)
@@ -654,15 +661,11 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.End
             ) {
-                Text("Pending Booking...", fontFamily = FontFamily.SansSerif)
-
                 Button(
                     onClick = {
                         navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
-
                     },
                     modifier = Modifier.height(36.dp)
                 ) {
@@ -731,9 +734,9 @@ fun updateAvailability(
 
 @Composable
 fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavController) {
+    val db = FirebaseFirestore.getInstance()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val db = FirebaseFirestore.getInstance()
 
     Text(
         text = "Ongoing Appointments",
@@ -752,7 +755,15 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
         )
     } else {
         appointments.forEach { appointment ->
-            var showFinishDialog by remember { mutableStateOf(false) }
+            var profileImageUrl by remember { mutableStateOf<String?>(null) }
+
+            LaunchedEffect(appointment.userId) {
+                db.collection("users").document(appointment.userId)
+                    .get()
+                    .addOnSuccessListener { doc ->
+                        profileImageUrl = doc.getString("profileImageUrl")
+                    }
+            }
 
             Card(
                 modifier = Modifier
@@ -760,65 +771,72 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
                     .padding(vertical = 8.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Patient: ${appointment.patientName}", fontFamily = FontFamily.SansSerif)
-                    Text("Location: ${appointment.location}", fontFamily = FontFamily.SansSerif)
-                    Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
-                    Text("Time: ${appointment.time}", fontFamily = FontFamily.SansSerif)
-                    Text("Status: Ongoing", fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Button(
-                            onClick = {
-                                navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
-                            }
-                        ) {
-                            Text("Chat")
-                        }
-
-                        Button(
-                            onClick = {
-                                showFinishDialog = true
-                            }
-                        ) {
-                            Text("Mark as Done")
-                        }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Image(
+                        painter = if (profileImageUrl != null)
+                            rememberAsyncImagePainter(profileImageUrl)
+                        else
+                            rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                        contentDescription = "Profile Image",
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Username: ${appointment.username}", fontFamily = FontFamily.SansSerif)
+                        Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
+                        Text("Time: ${appointment.timeSlot}", fontFamily = FontFamily.SansSerif)
                     }
 
-                    if (showFinishDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showFinishDialog = false },
-                            title = { Text("Finish Appointment") },
-                            text = { Text("Are you sure this appointment is completed?") },
-                            confirmButton = {
-                                Button(onClick = {
-                                    coroutineScope.launch {
-                                        db.collection("appointments")
-                                            .document(appointment.id)
-                                            .update("status", "Finished")
-
-                                        delay(2000)
-                                        Toast.makeText(context, "Appointment marked as finished.", Toast.LENGTH_SHORT).show()
-                                    }
-                                    showFinishDialog = false
-                                }) {
-                                    Text("Yes, Finish")
-                                }
-                            },
-                            dismissButton = {
-                                OutlinedButton(onClick = { showFinishDialog = false }) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
+                    Button(onClick = {
+                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
+                    }) {
+                        Text("Chat")
                     }
                 }
             }
         }
     }
 }
+
+@Composable
+fun CareGiverBottomBar(navController: NavController) {
+    val items = listOf(
+        BottomNavItem("Home", Icons.Default.Home, Screen.CareGiverMainScreen.route),
+        BottomNavItem("Chat", Icons.AutoMirrored.Filled.Chat, "chat_history"),
+        BottomNavItem("Transactions", Icons.AutoMirrored.Filled.ReceiptLong, "transaction_history"),
+        BottomNavItem("Settings", Icons.Default.Settings, "settings")
+    )
+    val currentRoute = navController.currentBackStackEntry?.destination?.route
+
+    androidx.compose.material3.NavigationBar {
+        items.forEach { item ->
+            NavigationBarItem(
+                icon = { Icon(item.icon, contentDescription = item.label) },
+                label = { Text(item.label) },
+                selected = currentRoute == item.route,
+                onClick = {
+                    if (currentRoute != item.route) {
+                        navController.navigate(item.route) {
+                            // Optional: pop up to main to avoid stacking
+                            popUpTo("caregiver_main") { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+data class BottomNavItem(
+    val label: String,
+    val icon: ImageVector,
+    val route: String
+)
+

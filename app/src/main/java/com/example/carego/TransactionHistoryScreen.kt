@@ -2,17 +2,17 @@ package com.example.carego.screens.caregiver.mainscreen
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -82,7 +82,7 @@ fun TransactionHistoryScreen(navController: NavController) {
 
                 // Wait for all user lookups to finish
                 Tasks.whenAllSuccess<FinishedAppointment>(tasks).addOnSuccessListener { list ->
-                    finishedAppointments = list
+                    finishedAppointments = list.sortedByDescending { it.date }
                 }
             }
     }
@@ -90,18 +90,14 @@ fun TransactionHistoryScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Transaction History", style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                }
+                title = { Text("Transaction History", style = MaterialTheme.typography.titleLarge) }
             )
+        },
+        bottomBar = {
+            CareGiverBottomBar(navController)
         }
-    ) { innerPadding ->
+    )
+{ innerPadding ->
         if (finishedAppointments.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -126,6 +122,7 @@ fun TransactionHistoryScreen(navController: NavController) {
     }
 }
 
+
 @Composable
 fun HistoryCard(appointment: FinishedAppointment) {
     Card(
@@ -133,12 +130,23 @@ fun HistoryCard(appointment: FinishedAppointment) {
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Patient: ${appointment.patientName}", fontWeight = FontWeight.Bold)
-            Text("PWD Type: ${appointment.pwdType}")
-            Text("Date: ${appointment.date}")
-            Text("Time: ${appointment.time}")
-            Text("Username: ${appointment.username}")
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Receipt,
+                contentDescription = null,
+                modifier = Modifier.padding(end = 12.dp)
+            )
+            Column {
+                Text("Patient: ${appointment.patientName}", fontWeight = FontWeight.Bold)
+                Text("PWD Type: ${appointment.pwdType}")
+                Text("Date: ${appointment.date}")
+                Text("Time: ${appointment.time}")
+                Text("Username: ${appointment.username}")
+            }
         }
     }
 }
+
