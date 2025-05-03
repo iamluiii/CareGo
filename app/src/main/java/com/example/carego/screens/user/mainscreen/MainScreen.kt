@@ -18,8 +18,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -30,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -54,6 +60,7 @@ import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
 import com.example.carego.R
 import com.example.carego.navigation.Screen
+import com.example.carego.screens.caregiver.mainscreen.BottomNavItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Job
@@ -117,10 +124,15 @@ fun UserMainScreen(
                 }
 
                 "pending" -> {
-                    if (pendingBookings.none { it.id == appointment.id }) {
+                    if (pendingBookings.none {
+                            it.date == appointment.date &&
+                                    it.timeSlot == appointment.timeSlot &&
+                                    it.caregiverUsername == appointment.caregiverUsername
+                        }) {
                         pendingBookings.add(appointment)
                     }
                 }
+
 
                 "confirmed" -> {
                     if (confirmedAppointments.none {
@@ -191,7 +203,7 @@ fun UserMainScreen(
             }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(navController.currentBackStackEntry) {
         auth.currentUser?.uid?.let { userId ->
             fetchUserInfo(db, userId, username, pwdType, isLoading)
         }
@@ -206,6 +218,9 @@ fun UserMainScreen(
         Scaffold(
             topBar = {
                 TopAppBar(title = { Text("User Dashboard") })
+            },
+            bottomBar = {
+                UserBottomBar(navController)
             }
         ) { innerPadding ->
             Column(
@@ -346,6 +361,14 @@ fun UserMainScreen(
 
 @Composable
 fun AvailableCaregiverItem(appointment: AppointmentInfo, navController: NavHostController) {
+    var profileImageUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(appointment.caregiverId) {
+        val doc = FirebaseFirestore.getInstance().collection("caregivers")
+            .document(appointment.caregiverId).get().await()
+        profileImageUrl = doc.getString("profileImageUrl")
+    }
+
     Card(
         elevation = CardDefaults.cardElevation(),
         modifier = Modifier
@@ -356,22 +379,39 @@ fun AvailableCaregiverItem(appointment: AppointmentInfo, navController: NavHostC
                 navController.navigate(
                     Screen.BookingScreen.createRoute(
                         appointmentId = appointment.id,
-                        caregiverId = appointment.caregiverId, // ✅ CAREGIVER ID only!!
+                        caregiverId = appointment.caregiverId,
                         date = encodedDate,
                         timeSlot = encodedTimeSlot
                     )
                 )
             }
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text("Caregiver Username: ${appointment.caregiverUsername}")
-            Text("License: ${appointment.license}")
-            Text("Municipality: ${appointment.municipality}")
-            Text("Date: ${appointment.date} (${appointment.timeSlot})")
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = if (profileImageUrl != null)
+                    rememberAsyncImagePainter(profileImageUrl)
+                else
+                    rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                contentDescription = "Caregiver Profile",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape)
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column {
+                Text(appointment.caregiverUsername, style = MaterialTheme.typography.titleMedium)
+                Text(appointment.license)
+                Text("${appointment.date} (${appointment.timeSlot})")
+            }
         }
     }
 }
-
 
 @Composable
 fun PendingBookingItem(
@@ -380,48 +420,73 @@ fun PendingBookingItem(
     onCancelBooking: (String) -> Unit
 ) {
     var showConfirmationDialog by remember { mutableStateOf(false) }
+    var profileImageUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(appointment.caregiverId) {
+        val doc = FirebaseFirestore.getInstance().collection("caregivers")
+            .document(appointment.caregiverId).get().await()
+        profileImageUrl = doc.getString("profileImageUrl")
+    }
 
     Card(
         elevation = CardDefaults.cardElevation(),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text("Caregiver Username: ${appointment.caregiverUsername}")
-            Text("License: ${appointment.license}")
-            Text("Municipality: ${appointment.municipality}")
-            Text("Date: ${appointment.date} (${appointment.timeSlot})")
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = if (profileImageUrl != null)
+                    rememberAsyncImagePainter(profileImageUrl)
+                else
+                    rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                contentDescription = "Caregiver Profile",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape)
+            )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Pending Booking...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Button(
-                    onClick = {
-                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "user"))
-                    },
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text("Chat")
-                }
+            Column {
+                Text(appointment.caregiverUsername, style = MaterialTheme.typography.titleMedium)
+                Text(appointment.license)
+                Text("${appointment.date} (${appointment.timeSlot})")
             }
+        }
 
-            Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Pending Booking...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
 
             Button(
-                onClick = { showConfirmationDialog = true },
-                modifier = Modifier.fillMaxWidth()
+                onClick = {
+                    navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "user"))
+                },
+                modifier = Modifier.height(36.dp)
             ) {
-                Text("Cancel Booking")
+                Text("Chat")
             }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = { showConfirmationDialog = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+        ) {
+            Text("Cancel Booking")
         }
     }
 
@@ -432,14 +497,10 @@ fun PendingBookingItem(
                 TextButton(onClick = {
                     showConfirmationDialog = false
                     onCancelBooking(appointment.id)
-                }) {
-                    Text("Yes")
-                }
+                }) { Text("Yes") }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmationDialog = false }) {
-                    Text("No")
-                }
+                TextButton(onClick = { showConfirmationDialog = false }) { Text("No") }
             },
             title = { Text("Cancel Booking") },
             text = { Text("Are you sure you want to cancel this booking?") }
@@ -467,29 +528,57 @@ suspend fun cancelBooking(appointmentId: String): Boolean {
 
 @Composable
 fun AppointmentItem(appointment: AppointmentInfo, navController: NavHostController) {
+    var profileImageUrl by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(appointment.caregiverId) {
+        val doc = FirebaseFirestore.getInstance().collection("caregivers")
+            .document(appointment.caregiverId).get().await()
+        profileImageUrl = doc.getString("profileImageUrl")
+    }
+
     Card(
         elevation = CardDefaults.cardElevation(),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text("Caregiver Username: ${appointment.caregiverUsername}")
-            Text("License: ${appointment.license}")
-            Text("Municipality: ${appointment.municipality}")
-            Text("Date: ${appointment.date} (${appointment.timeSlot})")
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = if (profileImageUrl != null)
+                    rememberAsyncImagePainter(profileImageUrl)
+                else
+                    rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                contentDescription = "Caregiver Profile",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape)
+            )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                Button(
-                    onClick = {
-                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "user"))
-                    }
-                ) {
-                    Text("Chat")
+            Column {
+                Text(appointment.caregiverUsername, style = MaterialTheme.typography.titleMedium)
+                Text(appointment.license)
+                Text("${appointment.date} (${appointment.timeSlot})")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = 12.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Button(
+                onClick = {
+                    navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "user"))
                 }
+            ) {
+                Text("Chat")
             }
         }
     }
@@ -676,3 +765,38 @@ fun SimpleListDialog(
         }
     )
 }
+@Composable
+fun UserBottomBar(navController: NavHostController) {
+    val items = listOf(
+        BottomNavItem("Home", Icons.Default.Home, Screen.UserMainScreen.route),
+        BottomNavItem("Chat", Icons.AutoMirrored.Filled.Chat, "chat_history"),
+        BottomNavItem("Transactions", Icons.AutoMirrored.Filled.ReceiptLong, "transaction_history"),
+        BottomNavItem("Settings", Icons.Default.Settings, "settings")
+    )
+    val currentRoute = navController.currentBackStackEntry?.destination?.route
+
+    androidx.compose.material3.NavigationBar {
+        items.forEach { item ->
+            NavigationBarItem(
+                icon = { Icon(item.icon, contentDescription = item.label) },
+                label = { Text(item.label) },
+                selected = currentRoute == item.route,
+                onClick = {
+                    if (currentRoute != item.route) {
+                        navController.navigate(item.route) {
+                            popUpTo(Screen.UserMainScreen.route) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+
+data class BottomNavItem(
+    val label: String,
+    val icon: ImageVector,
+    val route: String
+)

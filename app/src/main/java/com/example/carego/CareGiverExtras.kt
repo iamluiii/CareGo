@@ -28,8 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import com.example.carego.navigation.Screen
 import com.example.carego.screens.caregiver.mainscreen.CareGiverBottomBar
+import com.example.carego.screens.user.mainscreen.UserBottomBar
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
@@ -42,28 +44,37 @@ data class ChatPreview(
     val timestamp: Long
 )
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatHistoryScreen(navController: NavController) {
     val db = FirebaseFirestore.getInstance()
     val currentUser = FirebaseAuth.getInstance().currentUser
+    val currentUserId = currentUser?.uid ?: return
     var chatList by remember { mutableStateOf<List<ChatPreview>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var isCaregiver by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(Unit) {
-        val list = mutableListOf<ChatPreview>()
-        val caregiverId = currentUser?.uid
-        println("Current caregiverId: $caregiverId")
+        isCaregiver = try {
+            db.collection("caregivers").document(currentUserId).get().await().exists()
+        } catch (e: Exception) {
+            false
+        }
 
-        val appointmentsSnapshot = db.collection("appointments")
-            .whereEqualTo("caregiverId", caregiverId)
-            .get().await()
+        val appointmentQuery = if (isCaregiver == true) {
+            db.collection("appointments").whereEqualTo("caregiverId", currentUserId)
+        } else {
+            db.collection("appointments").whereEqualTo("userId", currentUserId)
+        }
 
-        println("Appointments found: ${appointmentsSnapshot.size()}")
+        val appointmentsSnapshot = appointmentQuery.get().await()
+        val loadedChats = mutableListOf<ChatPreview>()
 
         for (doc in appointmentsSnapshot.documents) {
             val appointmentId = doc.id
-            val userId = doc.getString("userId") ?: continue
+            val otherPartyId = if (isCaregiver == true) doc.getString("userId") else doc.getString("caregiverId")
+            if (otherPartyId.isNullOrEmpty()) continue
 
             val messagesSnapshot = try {
                 db.collection("chats")
@@ -71,38 +82,47 @@ fun ChatHistoryScreen(navController: NavController) {
                     .collection("messages")
                     .orderBy("timestamp")
                     .get().await()
-            } catch (e: Exception) {
-                println("No messages found in chat for $appointmentId: ${e.message}")
+            } catch (_: Exception) {
                 continue
             }
 
-            if (!messagesSnapshot.isEmpty) {
-                val latest = messagesSnapshot.documents.lastOrNull()
-                val latestText = latest?.getString("message") ?: ""
-                val timestamp = latest?.getTimestamp("timestamp")?.toDate()?.time ?: 0L
+            if (messagesSnapshot.isEmpty) continue
 
-                val userDoc = db.collection("users").document(userId).get().await()
-                val userName = userDoc.getString("username") ?: "Unknown"
+            val latest = messagesSnapshot.documents.lastOrNull()
+            val latestText = latest?.getString("message") ?: ""
+            val timestamp = latest?.getTimestamp("timestamp")?.toDate()?.time ?: 0L
 
-                list.add(
-                    ChatPreview(
-                        appointmentId = appointmentId,
-                        userId = userId,
-                        userName = userName,
-                        latestMessage = latestText,
-                        timestamp = timestamp
-                    )
+            val otherPartyDoc = if (isCaregiver == true)
+                db.collection("users").document(otherPartyId).get().await()
+            else
+                db.collection("caregivers").document(otherPartyId).get().await()
+
+            val otherPartyUsername = otherPartyDoc.getString("username") ?: "Unknown"
+
+            loadedChats.add(
+                ChatPreview(
+                    appointmentId = appointmentId,
+                    userId = otherPartyId,
+                    userName = otherPartyUsername,
+                    latestMessage = latestText,
+                    timestamp = timestamp
                 )
-            }
+            )
         }
 
-        chatList = list.sortedByDescending { it.timestamp }
+        chatList = loadedChats.sortedByDescending { it.timestamp }
         isLoading = false
     }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Chat History") }) },
-        bottomBar = { CareGiverBottomBar(navController) }
+        bottomBar = {
+            if (isCaregiver == true) {
+                CareGiverBottomBar(navController as NavHostController)
+            } else if (isCaregiver == false) {
+                UserBottomBar(navController as NavHostController)
+            }
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -112,31 +132,28 @@ fun ChatHistoryScreen(navController: NavController) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (chatList.isEmpty()) {
-                Text(
-                    text = "No chat history found.",
-                    modifier = Modifier.align(Alignment.Center)
-                )
+                Text("No chat history found.", modifier = Modifier.align(Alignment.Center))
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
+                LazyColumn(modifier = Modifier.padding(16.dp)) {
                     items(chatList) { chat ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 6.dp)
                                 .clickable {
-                                    navController.navigate(Screen.ChatScreen.createRoute(chat.appointmentId, "caregiver"))
-
+                                    navController.navigate(
+                                        Screen.ChatScreen.createRoute(
+                                            chat.appointmentId,
+                                            if (isCaregiver == true) "caregiver" else "user"
+                                        )
+                                    )
                                 },
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text(text = chat.userName, style = MaterialTheme.typography.titleMedium)
+                                Text(chat.userName, style = MaterialTheme.typography.titleMedium)
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(text = chat.latestMessage, style = MaterialTheme.typography.bodyMedium)
+                                Text(chat.latestMessage, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
@@ -145,6 +162,9 @@ fun ChatHistoryScreen(navController: NavController) {
         }
     }
 }
+
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(navController: NavController) {

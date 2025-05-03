@@ -1,5 +1,6 @@
 package com.example.carego.screens.caregiver.mainscreen
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,10 +72,10 @@ import com.example.carego.R
 import com.example.carego.data.Appointment
 import com.example.carego.navigation.Screen
 import com.example.carego.screens.availabilityscreen.AvailabilityDatePicker
-import com.example.carego.screens.user.mainscreen.extractMunicipality
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -180,10 +181,13 @@ fun CareGiverMainScreen(navController: NavController) {
                                                 .joinToString(" ")
 
                                             val address = userDoc.getString("address") ?: ""
+                                            val pwdType = userDoc.getString("pwdType") ?: ""
+
                                             val enriched = appointment.copy(
                                                 patientName = fullName,
                                                 location = address,
-                                                time = appointment.timeSlot
+                                                time = appointment.timeSlot,
+                                                pwdType = pwdType
                                             )
 
                                             if (confirmedAppointments.none {
@@ -207,10 +211,13 @@ fun CareGiverMainScreen(navController: NavController) {
                                                 .joinToString(" ")
 
                                             val address = userDoc.getString("address") ?: ""
+                                            val fetchedPwdType = userDoc.getString("pwdType") ?: ""
+
                                             val enriched = appointment.copy(
                                                 patientName = fullName,
                                                 location = address,
-                                                time = appointment.timeSlot
+                                                time = appointment.timeSlot,
+                                                pwdType = fetchedPwdType // ✅ this now works
                                             )
 
                                             if (ongoingAppointments.none {
@@ -383,12 +390,15 @@ fun CareGiverMainScreen(navController: NavController) {
 @Composable
 fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: NavController) {
     val db = FirebaseFirestore.getInstance()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     Text(
         text = "Upcoming Appointments",
         fontSize = 18.sp,
         fontWeight = FontWeight.SemiBold,
-        fontFamily = FontFamily.SansSerif
+        fontFamily = FontFamily.SansSerif,
+        modifier = Modifier.padding(top = 16.dp)
     )
 
     if (appointments.isEmpty()) {
@@ -401,12 +411,15 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
     } else {
         appointments.forEach { appointment ->
             var profileImageUrl by remember { mutableStateOf<String?>(null) }
+            var pwdType by remember { mutableStateOf("") }
+            var showStartDialog by remember { mutableStateOf(false) }
 
             LaunchedEffect(appointment.userId) {
                 db.collection("users").document(appointment.userId)
                     .get()
                     .addOnSuccessListener { doc ->
                         profileImageUrl = doc.getString("profileImageUrl")
+                        pwdType = doc.getString("pwdType") ?: ""
                     }
             }
 
@@ -416,37 +429,80 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
                     .padding(vertical = 8.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Image(
-                        painter = if (profileImageUrl != null)
-                            rememberAsyncImagePainter(profileImageUrl)
-                        else
-                            rememberAsyncImagePainter(R.drawable.defaultprofileicon),
-                        contentDescription = "Profile Image",
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Username: ${appointment.username}", fontFamily = FontFamily.SansSerif)
-                        Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
-                        Text("Time: ${appointment.timeSlot}", fontFamily = FontFamily.SansSerif)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = if (profileImageUrl != null)
+                                rememberAsyncImagePainter(profileImageUrl)
+                            else
+                                rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                            contentDescription = "Profile Image",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(appointment.username, fontFamily = FontFamily.SansSerif)
+                            Text(pwdType, fontFamily = FontFamily.SansSerif)
+                            Text(appointment.date, fontFamily = FontFamily.SansSerif)
+                            Text(appointment.timeSlot, fontFamily = FontFamily.SansSerif)
+                        }
                     }
-                    Button(onClick = {
-                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
-                    }) {
-                        Text("Chat")
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Button(
+                            onClick = {
+                                navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
+                            }
+                        ) {
+                            Text("Chat")
+                        }
+                        Button(onClick = {
+                            showStartDialog = true
+                        }) {
+                            Text("Start")
+                        }
+                    }
+
+                    if (showStartDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showStartDialog = false },
+                            title = { Text("Start Appointment") },
+                            text = { Text("Are you sure you want to start this appointment?") },
+                            confirmButton = {
+                                Button(onClick = {
+                                    coroutineScope.launch {
+                                        db.collection("appointments")
+                                            .document(appointment.id)
+                                            .update("status", "Ongoing")
+                                        delay(2000)
+                                        Toast.makeText(context, "Appointment started.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    showStartDialog = false
+                                }) {
+                                    Text("Yes, Start")
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(onClick = { showStartDialog = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
                     }
                 }
             }
         }
     }
 }
+
 
 
 @Composable
@@ -617,7 +673,6 @@ fun AvailabilityCard(date: String, displayTime: String) {
 fun PendingBookingItem(appointment: Appointment, navController: NavController) {
     val db = FirebaseFirestore.getInstance()
     var pwdType by remember { mutableStateOf("") }
-    var municipality by remember { mutableStateOf("") }
     var profileImageUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(appointment.userId) {
@@ -626,8 +681,6 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
                 .get()
                 .addOnSuccessListener { document ->
                     pwdType = document.getString("pwdType") ?: ""
-                    val address = document.getString("address") ?: ""
-                    municipality = extractMunicipality(address)
                     profileImageUrl = document.getString("profileImageUrl")
                 }
         }
@@ -639,44 +692,40 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
             .padding(vertical = 4.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(
-                    painter = rememberAsyncImagePainter(profileImageUrl ?: R.drawable.defaultprofileicon),
-                    contentDescription = "Profile Picture",
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Username: @${appointment.username}", fontFamily = FontFamily.SansSerif)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Image(
+                painter = if (profileImageUrl != null)
+                    rememberAsyncImagePainter(profileImageUrl)
+                else
+                    rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                contentDescription = "Profile Image",
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(appointment.username, fontFamily = FontFamily.SansSerif)
+                Text(pwdType, fontFamily = FontFamily.SansSerif)
+                Text(appointment.date, fontFamily = FontFamily.SansSerif)
+                Text(appointment.timeSlot, fontFamily = FontFamily.SansSerif)
             }
-
-            Text("PWD Type: $pwdType", fontFamily = FontFamily.SansSerif)
-            Text("Municipality: $municipality", fontFamily = FontFamily.SansSerif)
-            Text("Date: ${appointment.date} | Time: ${appointment.timeSlot}", fontFamily = FontFamily.SansSerif)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
+            Button(
+                onClick = {
+                    navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
+                },
+                modifier = Modifier.height(36.dp)
             ) {
-                Button(
-                    onClick = {
-                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
-                    },
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Text("Chat")
-                }
+                Text("Chat")
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
+
 
 fun updateAvailability(
     date: String,
@@ -756,12 +805,15 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
     } else {
         appointments.forEach { appointment ->
             var profileImageUrl by remember { mutableStateOf<String?>(null) }
+            var pwdType by remember { mutableStateOf("") }
+            var showFinishDialog by remember { mutableStateOf(false) }
 
             LaunchedEffect(appointment.userId) {
                 db.collection("users").document(appointment.userId)
                     .get()
                     .addOnSuccessListener { doc ->
                         profileImageUrl = doc.getString("profileImageUrl")
+                        pwdType = doc.getString("pwdType") ?: ""
                     }
             }
 
@@ -771,38 +823,85 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
                     .padding(vertical = 8.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Image(
-                        painter = if (profileImageUrl != null)
-                            rememberAsyncImagePainter(profileImageUrl)
-                        else
-                            rememberAsyncImagePainter(R.drawable.defaultprofileicon),
-                        contentDescription = "Profile Image",
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Username: ${appointment.username}", fontFamily = FontFamily.SansSerif)
-                        Text("Date: ${appointment.date}", fontFamily = FontFamily.SansSerif)
-                        Text("Time: ${appointment.timeSlot}", fontFamily = FontFamily.SansSerif)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = if (profileImageUrl != null)
+                                rememberAsyncImagePainter(profileImageUrl)
+                            else
+                                rememberAsyncImagePainter(R.drawable.defaultprofileicon),
+                            contentDescription = "Profile Image",
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(appointment.username, fontFamily = FontFamily.SansSerif)
+                            Text(pwdType, fontFamily = FontFamily.SansSerif)
+                            Text(appointment.date, fontFamily = FontFamily.SansSerif)
+                            Text(appointment.timeSlot, fontFamily = FontFamily.SansSerif)
+                        }
                     }
 
-                    Button(onClick = {
-                        navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
-                    }) {
-                        Text("Chat")
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Button(
+                            onClick = {
+                                navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "caregiver"))
+                            }
+                        ) {
+                            Text("Chat")
+                        }
+
+                        Button(
+                            onClick = {
+                                showFinishDialog = true
+                            }
+                        ) {
+                            Text("Mark as Done")
+                        }
+                    }
+
+                    if (showFinishDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showFinishDialog = false },
+                            title = { Text("Finish Appointment") },
+                            text = { Text("Are you sure this appointment is completed?") },
+                            confirmButton = {
+                                Button(onClick = {
+                                    coroutineScope.launch {
+                                        db.collection("appointments")
+                                            .document(appointment.id)
+                                            .update("status", "Finished")
+
+                                        delay(2000)
+                                        Toast.makeText(context, "Appointment marked as finished.", Toast.LENGTH_SHORT).show()
+                                    }
+                                    showFinishDialog = false
+                                }) {
+                                    Text("Yes, Finish")
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(onClick = { showFinishDialog = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
                     }
                 }
             }
         }
     }
 }
+
+
 
 @Composable
 fun CareGiverBottomBar(navController: NavController) {

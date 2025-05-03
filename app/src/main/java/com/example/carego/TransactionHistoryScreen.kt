@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -28,76 +27,91 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.google.android.gms.tasks.Tasks
+import androidx.navigation.NavHostController
+import com.example.carego.screens.user.mainscreen.UserBottomBar
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.tasks.await
 
 
 data class FinishedAppointment(
     val patientName: String = "",
+    val licenseType: String = "",
     val pwdType: String = "",
     val date: String = "",
     val time: String = "",
     val username: String = ""
 )
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionHistoryScreen(navController: NavController) {
     val db = FirebaseFirestore.getInstance()
     val auth = FirebaseAuth.getInstance()
-    val caregiverId = auth.currentUser?.uid ?: return
+    val userId = auth.currentUser?.uid ?: return
 
     var finishedAppointments by remember { mutableStateOf(listOf<FinishedAppointment>()) }
+    var isCaregiver by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(true) {
-        db.collection("appointments")
-            .whereEqualTo("caregiverId", caregiverId)
+        val caregiverDoc = db.collection("caregivers").document(userId).get().await()
+        isCaregiver = caregiverDoc.exists()
+
+        val queryField = if (isCaregiver == true) "caregiverId" else "userId"
+        val appointmentsSnapshot = db.collection("appointments")
+            .whereEqualTo(queryField, userId)
             .whereEqualTo("status", "Finished")
             .get()
-            .addOnSuccessListener { result ->
-                val tasks = result.map { doc ->
-                    val userId = doc.getString("userId") ?: ""
-                    val date = doc.getString("date") ?: ""
-                    val time = doc.getString("timeSlot") ?: ""
+            .await()
 
-                    db.collection("users").document(userId).get().continueWith { userTask ->
-                        val userDoc = userTask.result
-                        val firstName = userDoc?.getString("firstName") ?: ""
-                        val lastName = userDoc?.getString("lastName") ?: ""
-                        val middleName = userDoc?.getString("middleName") ?: ""
-                        val fullName = listOf(lastName, firstName, middleName)
-                            .filter { it.isNotEmpty() && it.lowercase() != "null" }
-                            .joinToString(" ")
+        val results = appointmentsSnapshot.documents.mapNotNull { doc ->
+            val partnerId = if (isCaregiver == true) doc.getString("userId") else doc.getString("caregiverId")
+            if (partnerId.isNullOrEmpty()) return@mapNotNull null
 
-                        FinishedAppointment(
-                            patientName = fullName,
-                            pwdType = userDoc?.getString("pwdType") ?: "",
-                            date = date,
-                            time = time,
-                            username = userDoc?.getString("username") ?: ""
-                        )
-                    }
-                }
+            val date = doc.getString("date") ?: ""
+            val time = doc.getString("timeSlot") ?: ""
 
-                // Wait for all user lookups to finish
-                Tasks.whenAllSuccess<FinishedAppointment>(tasks).addOnSuccessListener { list ->
-                    finishedAppointments = list.sortedByDescending { it.date }
-                }
-            }
+            val partnerDoc = if (isCaregiver == true)
+                db.collection("users").document(partnerId).get().await()
+            else
+                db.collection("caregivers").document(partnerId).get().await()
+
+            val firstName = partnerDoc.getString("firstName") ?: ""
+            val lastName = partnerDoc.getString("lastName") ?: ""
+            val middleName = partnerDoc.getString("middleName") ?: ""
+            val fullName = listOf(lastName, firstName, middleName)
+                .filter { it.isNotEmpty() && it.lowercase() != "null" }
+                .joinToString(" ")
+
+            FinishedAppointment(
+                patientName = fullName,
+                pwdType = if (isCaregiver == true) partnerDoc.getString("pwdType") ?: "" else "",
+                licenseType = if (isCaregiver == false) partnerDoc.getString("license") ?: "" else "",
+                date = date,
+                time = time,
+                username = partnerDoc.getString("username") ?: ""
+            )
+        }
+
+        finishedAppointments = results.sortedByDescending { it.date }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Transaction History", style = MaterialTheme.typography.titleLarge) }
-            )
+            TopAppBar(title = { Text("Transaction History") })
         },
         bottomBar = {
-            CareGiverBottomBar(navController)
+            val navHostController = navController as? NavHostController
+            if (navHostController != null) {
+                if (isCaregiver == true) {
+                    CareGiverBottomBar(navHostController)
+                } else if (isCaregiver == false) {
+                    UserBottomBar(navHostController)
+                }
+            }
         }
-    )
-{ innerPadding ->
+    ) { innerPadding ->
         if (finishedAppointments.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -115,7 +129,7 @@ fun TransactionHistoryScreen(navController: NavController) {
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 items(finishedAppointments) { appointment ->
-                    HistoryCard(appointment)
+                    HistoryCard(appointment, isCaregiver == true)
                 }
             }
         }
@@ -124,7 +138,7 @@ fun TransactionHistoryScreen(navController: NavController) {
 
 
 @Composable
-fun HistoryCard(appointment: FinishedAppointment) {
+fun HistoryCard(appointment: FinishedAppointment, isCaregiver: Boolean) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -140,8 +154,12 @@ fun HistoryCard(appointment: FinishedAppointment) {
                 modifier = Modifier.padding(end = 12.dp)
             )
             Column {
-                Text("Patient: ${appointment.patientName}", fontWeight = FontWeight.Bold)
-                Text("PWD Type: ${appointment.pwdType}")
+                Text("Name: ${appointment.patientName}", fontWeight = FontWeight.Bold)
+                if (isCaregiver) {
+                    Text("PWD Type: ${appointment.pwdType}")
+                } else {
+                    Text("License: ${appointment.licenseType}")
+                }
                 Text("Date: ${appointment.date}")
                 Text("Time: ${appointment.time}")
                 Text("Username: ${appointment.username}")
@@ -149,4 +167,6 @@ fun HistoryCard(appointment: FinishedAppointment) {
         }
     }
 }
+
+
 
