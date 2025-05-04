@@ -59,7 +59,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.carego.helpers.AddressData
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 
@@ -471,6 +470,7 @@ fun SignUpScreen(navController: NavController) {
 }
 
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactInfoStepUnified(
     isCaregiver: Boolean,
@@ -494,6 +494,9 @@ fun ContactInfoStepUnified(
     onNext: () -> Unit,
     onBack: () -> Unit
 ) {
+    val municipalities = LocationData.municipalityBarangayMap.keys.toList()
+    val barangays = LocationData.municipalityBarangayMap[selectedMunicipality] ?: emptyList()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -524,30 +527,32 @@ fun ContactInfoStepUnified(
                 .padding(top = 8.dp)
         )
 
-
-
         Spacer(modifier = Modifier.height(16.dp))
         Text("Address", fontWeight = FontWeight.SemiBold)
 
         DropdownBox(
             label = "Municipality",
-            options = AddressData.barangays.keys.sorted(),
+            options = municipalities,
             selectedOption = selectedMunicipality,
             onOptionSelected = {
                 onMunicipalityChange(it)
-                onBarangayChange("")
+                onBarangayChange("") // Reset barangay when municipality changes
             },
             error = errors["municipality"] == true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         )
 
         DropdownBox(
             label = "Barangay",
-            options = AddressData.barangays[selectedMunicipality] ?: emptyList(),
+            options = barangays,
             selectedOption = selectedBarangay,
             onOptionSelected = onBarangayChange,
             error = errors["barangay"] == true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         )
 
         OutlinedTextField(
@@ -556,7 +561,9 @@ fun ContactInfoStepUnified(
             label = { Text("Street") },
             isError = errors["street"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         )
 
         OutlinedTextField(
@@ -565,7 +572,9 @@ fun ContactInfoStepUnified(
             label = { Text("House Number") },
             isError = errors["houseNumber"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
         )
 
         if (!isCaregiver) {
@@ -574,7 +583,9 @@ fun ContactInfoStepUnified(
 
             OutlinedTextField(
                 value = emergencyName ?: "",
-                onValueChange = { input -> onEmergencyNameChange?.invoke(input.filter { it.isLetter() || it.isWhitespace() }) },
+                onValueChange = {
+                    onEmergencyNameChange?.invoke(it.filter { c -> c.isLetter() || c.isWhitespace() })
+                },
                 label = { Text("Emergency Contact Name") },
                 isError = errors["emergencyName"] == true,
                 singleLine = true,
@@ -609,6 +620,9 @@ fun ContactInfoStepUnified(
         }
     }
 }
+
+
+
 @Composable
 fun AccountAccessStepUnified(
     username: String,

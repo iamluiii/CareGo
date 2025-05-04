@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -328,29 +329,74 @@ fun ChatScreen(
                     }
 
                     if (showDeclineDialog) {
+                        var declineReason by remember { mutableStateOf("") }
+                        var showError by remember { mutableStateOf(false) }
+
                         androidx.compose.material3.AlertDialog(
                             onDismissRequest = { showDeclineDialog = false },
-                            title = { Text("Confirm Decline") },
-                            text = { Text("Are you sure you want to decline and cancel the chat?") },
+                            title = { Text("Decline Booking") },
+                            text = {
+                                Column {
+                                    Text("Please provide a reason for declining this booking:")
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextField(
+                                        value = declineReason,
+                                        onValueChange = {
+                                            declineReason = it
+                                            showError = false
+                                        },
+                                        placeholder = { Text("e.g. Not available at this time") },
+                                        isError = showError,
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    if (showError) {
+                                        Text("Reason cannot be empty.", color = Color.Red, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            },
                             confirmButton = {
                                 Button(onClick = {
+                                    if (declineReason.isBlank()) {
+                                        showError = true
+                                        return@Button
+                                    }
+
                                     val appointmentRef = db.collection("appointments").document(appointmentId)
                                     val chatRef = db.collection("chats").document(appointmentId)
 
-                                    appointmentRef.update("status", "available").addOnSuccessListener {
+                                    appointmentRef.get().addOnSuccessListener { doc ->
+                                        val data = doc.data ?: return@addOnSuccessListener
+
+                                        // 1. Update to "declined" with reason
+                                        appointmentRef.update(
+                                            mapOf(
+                                                "status" to "declined",
+                                                "declineReason" to declineReason,
+                                                "declineTimestamp" to Timestamp.now(),
+                                                "declineNotified" to false
+                                            )
+                                        )
+
+                                        // 2. Duplicate the appointment with status = available
+                                        val newData = data.toMutableMap().apply {
+                                            this["status"] = "available"
+                                            this.remove("declineReason")
+                                            this.remove("declineTimestamp")
+                                            this.remove("declineNotified")
+                                        }
+
+                                        db.collection("appointments").add(newData)
+
+                                        // 3. Delete old messages
                                         chatRef.collection("messages").get().addOnSuccessListener { snapshot ->
                                             val batch = db.batch()
-                                            for (doc in snapshot.documents) {
-                                                batch.delete(doc.reference)
+                                            for (msg in snapshot.documents) {
+                                                batch.delete(msg.reference)
                                             }
                                             batch.commit().addOnSuccessListener {
                                                 Toast.makeText(context, "Booking declined.", Toast.LENGTH_SHORT).show()
-                                                navController.navigate(
-                                                    if (userType == "user")
-                                                        Screen.UserMainScreen.route
-                                                    else
-                                                        Screen.CareGiverMainScreen.route
-                                                ) {
+                                                navController.navigate(Screen.CareGiverMainScreen.route) {
                                                     popUpTo(0)
                                                 }
                                             }
@@ -359,12 +405,12 @@ fun ChatScreen(
 
                                     showDeclineDialog = false
                                 }) {
-                                    Text("Yes")
+                                    Text("Submit")
                                 }
                             },
                             dismissButton = {
-                                Button(onClick = { showDeclineDialog = false }) {
-                                    Text("No")
+                                TextButton(onClick = { showDeclineDialog = false }) {
+                                    Text("Cancel")
                                 }
                             }
                         )

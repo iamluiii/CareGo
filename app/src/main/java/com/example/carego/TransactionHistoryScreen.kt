@@ -40,7 +40,8 @@ data class FinishedAppointment(
     val pwdType: String = "",
     val date: String = "",
     val time: String = "",
-    val username: String = ""
+    val username: String = "",
+    val status: String = ""
 )
 
 
@@ -61,7 +62,7 @@ fun TransactionHistoryScreen(navController: NavController) {
         val queryField = if (isCaregiver == true) "caregiverId" else "userId"
         val appointmentsSnapshot = db.collection("appointments")
             .whereEqualTo(queryField, userId)
-            .whereEqualTo("status", "Finished")
+            .whereIn("status", listOf("Finished", "declined"))
             .get()
             .await()
 
@@ -71,6 +72,7 @@ fun TransactionHistoryScreen(navController: NavController) {
 
             val date = doc.getString("date") ?: ""
             val time = doc.getString("timeSlot") ?: ""
+            val status = doc.getString("status") ?: ""
 
             val partnerDoc = if (isCaregiver == true)
                 db.collection("users").document(partnerId).get().await()
@@ -90,11 +92,12 @@ fun TransactionHistoryScreen(navController: NavController) {
                 licenseType = if (isCaregiver == false) partnerDoc.getString("license") ?: "" else "",
                 date = date,
                 time = time,
-                username = partnerDoc.getString("username") ?: ""
+                username = partnerDoc.getString("username") ?: "",
+                status = status
             )
         }
 
-        finishedAppointments = results.sortedByDescending { it.date }
+        finishedAppointments = results.sortedWith(compareByDescending<FinishedAppointment> { it.date }.thenBy { it.status != "Finished" })
     }
 
     Scaffold(
@@ -119,7 +122,7 @@ fun TransactionHistoryScreen(navController: NavController) {
                     .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No finished appointments yet.")
+                Text("No transaction history yet.")
             }
         } else {
             LazyColumn(
@@ -163,10 +166,8 @@ fun HistoryCard(appointment: FinishedAppointment, isCaregiver: Boolean) {
                 Text("Date: ${appointment.date}")
                 Text("Time: ${appointment.time}")
                 Text("Username: ${appointment.username}")
+                Text("Status: ${appointment.status.replaceFirstChar { it.uppercase() }}")
             }
         }
     }
 }
-
-
-

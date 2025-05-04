@@ -225,13 +225,21 @@ fun LoginContent(auth: FirebaseAuth, db: FirebaseFirestore, navController: NavCo
             confirmButton = {
                 Button(
                     onClick = {
-                        auth.currentUser?.sendEmailVerification()?.addOnCompleteListener { task ->
-                            if (task.isSuccessful) {
-                                Toast.makeText(context, "Verification email sent.", Toast.LENGTH_SHORT).show()
-                                hasSentInitialVerification = true
-                                startResendCooldown()
-                            } else {
-                                Toast.makeText(context, "Failed to send email.", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            try {
+                                val userResult = auth.signInWithEmailAndPassword(email.trim(), password).await()
+                                val user = userResult.user
+                                user?.sendEmailVerification()?.addOnCompleteListener { task ->
+                                    if (task.isSuccessful) {
+                                        Toast.makeText(context, "Verification email sent.", Toast.LENGTH_SHORT).show()
+                                        hasSentInitialVerification = true
+                                        startResendCooldown()
+                                    } else {
+                                        Toast.makeText(context, "Failed to send email.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     },

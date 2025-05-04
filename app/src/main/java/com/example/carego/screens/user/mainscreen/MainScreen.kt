@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,12 +58,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import coil.compose.rememberAsyncImagePainter
 import com.example.carego.R
 import com.example.carego.navigation.Screen
 import com.example.carego.screens.caregiver.mainscreen.BottomNavItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.joinAll
@@ -70,6 +73,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,66 +103,32 @@ fun UserMainScreen(
     val showTimeSlotDialog = remember { mutableStateOf(false) }
     val showLicenseDialog = remember { mutableStateOf(false) }
     val showMunicipalityDialog = remember { mutableStateOf(false) }
+    val showDeclinePopup = remember { mutableStateOf(false) }
+    val declineReasonText = remember { mutableStateOf("") }
 
     val scrollState = rememberScrollState()
+    val currentUserId = auth.currentUser?.uid
 
-    fun applyFilter() {
-        availableCaregivers.clear()
-        pendingBookings.clear()
-        confirmedAppointments.clear()
+    val navBackStackEntry = navController.currentBackStackEntryAsState()
+    val latestRoute = navBackStackEntry.value?.destination?.route
 
-        val seenIds = mutableSetOf<String>()
-
-        for (appointment in allAppointments) {
-            if (!seenIds.add(appointment.id)) continue // ✅ Skip duplicates by ID
-
-            when (appointment.status.lowercase()) {
-                "available" -> {
-                    if ((selectedDate.value.isEmpty() || appointment.date == selectedDate.value) &&
-                        (selectedTimeSlot.value.isEmpty() || appointment.timeSlot == selectedTimeSlot.value) &&
-                        (selectedLicenseType.value.isEmpty() || appointment.license == selectedLicenseType.value) &&
-                        (selectedMunicipality.value.isEmpty() || appointment.municipality == selectedMunicipality.value)
-                    ) {
-                        availableCaregivers.add(appointment)
-                    }
-                }
-
-                "pending" -> {
-                    if (pendingBookings.none {
-                            it.date == appointment.date &&
-                                    it.timeSlot == appointment.timeSlot &&
-                                    it.caregiverUsername == appointment.caregiverUsername
-                        }) {
-                        pendingBookings.add(appointment)
-                    }
-                }
-
-
-                "confirmed" -> {
-                    if (confirmedAppointments.none {
-                            it.date == appointment.date &&
-                                    it.timeSlot == appointment.timeSlot &&
-                                    it.caregiverUsername == appointment.caregiverUsername
-                        }) {
-                        confirmedAppointments.add(appointment)
-                    }
-                }
-
-            }
-        }
-    }
-
-    fun listenToAppointmentsRealtime() {
-        val currentUserId = auth.currentUser?.uid
+    // ---- Listen to appointments function
+    fun listenToAppointmentsRealtime(
+        db: FirebaseFirestore,
+        currentUserId: String,
+        coroutineScope: CoroutineScope,
+        allAppointments: SnapshotStateList<AppointmentInfo>,
+        applyFilter: () -> Unit,
+        onDone: () -> Unit = {}
+    ) {
         db.collection("appointments")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) {
-                    isLoading.value = false
+                    onDone()
                     return@addSnapshotListener
                 }
 
                 allAppointments.clear()
-
                 val jobs = mutableListOf<Job>()
 
                 for (doc in snapshot.documents) {
@@ -198,17 +168,116 @@ fun UserMainScreen(
                 coroutineScope.launch {
                     jobs.joinAll()
                     applyFilter()
-                    isLoading.value = false
+                    onDone()
                 }
             }
     }
 
-    LaunchedEffect(navController.currentBackStackEntry) {
-        auth.currentUser?.uid?.let { userId ->
-            fetchUserInfo(db, userId, username, pwdType, isLoading)
+    fun applyFilter() {
+        availableCaregivers.clear()
+        pendingBookings.clear()
+        confirmedAppointments.clear()
+
+        val seenIds = mutableSetOf<String>()
+
+        for (appointment in allAppointments) {
+            if (!seenIds.add(appointment.id)) continue
+
+            when (appointment.status.lowercase()) {
+                "available" -> {
+                    if ((selectedDate.value.isEmpty() || appointment.date == selectedDate.value) &&
+                        (selectedTimeSlot.value.isEmpty() || appointment.timeSlot == selectedTimeSlot.value) &&
+                        (selectedLicenseType.value.isEmpty() || appointment.license == selectedLicenseType.value) &&
+                        (selectedMunicipality.value.isEmpty() || appointment.municipality == selectedMunicipality.value)
+                    ) {
+                        availableCaregivers.add(appointment)
+                    }
+                }
+                "pending" -> {
+                    if (pendingBookings.none {
+                            it.date == appointment.date &&
+                                    it.timeSlot == appointment.timeSlot &&
+                                    it.caregiverUsername == appointment.caregiverUsername
+                        }) {
+                        pendingBookings.add(appointment)
+                    }
+                }
+                "confirmed" -> {
+                    if (confirmedAppointments.none {
+                            it.date == appointment.date &&
+                                    it.timeSlot == appointment.timeSlot &&
+                                    it.caregiverUsername == appointment.caregiverUsername
+                        }) {
+                        confirmedAppointments.add(appointment)
+                    }
+                }
+            }
         }
-        listenToAppointmentsRealtime()
     }
+
+    // ✅ TRIGGER ON NAVIGATION BACK TO HOME
+    LaunchedEffect(latestRoute) {
+        if (latestRoute == Screen.UserMainScreen.route && currentUserId != null) {
+            allAppointments.clear()
+            listenToAppointmentsRealtime(
+                db = db,
+                currentUserId = currentUserId,
+                coroutineScope = coroutineScope,
+                allAppointments = allAppointments,
+                applyFilter = ::applyFilter
+            )
+        }
+    }
+
+    // ✅ INITIAL LOAD + DECLINED CHECK
+    LaunchedEffect(Unit) {
+        currentUserId?.let { userId ->
+            db.collection("users").document(userId).get().addOnSuccessListener { doc ->
+                username.value = doc.getString("username") ?: ""
+                pwdType.value = doc.getString("pwdType") ?: ""
+            }
+
+            db.collection("appointments")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("status", "declined")
+                .whereEqualTo("declineNotified", false)
+                .get()
+                .addOnSuccessListener { docs ->
+                    if (!docs.isEmpty) {
+                        val declinedDoc = docs.first()
+                        val reason = declinedDoc.getString("declineReason") ?: "No reason provided"
+                        val caregiverId = declinedDoc.getString("caregiverId") ?: ""
+                        val date = declinedDoc.getString("date") ?: ""
+                        val timeSlot = declinedDoc.getString("timeSlot") ?: ""
+
+                        db.collection("caregivers").document(caregiverId).get()
+                            .addOnSuccessListener { caregiverDoc ->
+                                val caregiverUsername = caregiverDoc.getString("username") ?: "Unknown"
+                                declineReasonText.value =
+                                    "Booking with @$caregiverUsername on $date ($timeSlot) was cancelled.\n\nReason: $reason"
+                                showDeclinePopup.value = true
+
+                                db.collection("appointments").document(declinedDoc.id)
+                                    .update("declineNotified", true)
+
+                            }
+                    }
+                }
+
+            // ✅ Real-time appointment listener
+            allAppointments.clear()
+            listenToAppointmentsRealtime(
+                db = db,
+                currentUserId = userId,
+                coroutineScope = coroutineScope,
+                allAppointments = allAppointments,
+                applyFilter = ::applyFilter,
+                onDone = { isLoading.value = false } // ✅ stop loading spinner
+            )
+
+        }
+    }
+
 
     if (isLoading.value) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -282,7 +351,17 @@ fun UserMainScreen(
                             coroutineScope.launch {
                                 delay(2000)
                                 val success = cancelBooking(id)
-                                if (success) listenToAppointmentsRealtime()
+                                if (success) {
+                                    val uid = currentUserId ?: return@launch
+                                    listenToAppointmentsRealtime(
+                                        db = db,
+                                        currentUserId = uid,
+                                        coroutineScope = coroutineScope,
+                                        allAppointments = allAppointments,
+                                        applyFilter = ::applyFilter
+                                    )
+                                }
+
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -300,6 +379,19 @@ fun UserMainScreen(
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
+            }
+
+            if (showDeclinePopup.value) {
+                AlertDialog(
+                    onDismissRequest = { showDeclinePopup.value = false },
+                    title = { Text("Booking Cancelled") },
+                    text = { Text("Your previous booking was declined.\nReason: ${declineReasonText.value}") },
+                    confirmButton = {
+                        TextButton(onClick = { showDeclinePopup.value = false }) {
+                            Text("Okay")
+                        }
+                    }
+                )
             }
 
             if (showFilterDialog.value) {
@@ -466,8 +558,6 @@ fun PendingBookingItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Pending Booking...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-
             Button(
                 onClick = {
                     navController.navigate(Screen.ChatScreen.createRoute(appointment.id, "user"))

@@ -168,9 +168,28 @@ fun ChatHistoryScreen(navController: NavController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(navController: NavController) {
+    val auth = FirebaseAuth.getInstance()
+    val currentUserId = auth.currentUser?.uid
+    val db = FirebaseFirestore.getInstance()
+    var isCaregiver by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(Unit) {
+        isCaregiver = try {
+            db.collection("caregivers").document(currentUserId ?: "").get().await().exists()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("Settings") }) },
-        bottomBar = { CareGiverBottomBar(navController) }
+        bottomBar = {
+            when (isCaregiver) {
+                true -> CareGiverBottomBar(navController as NavHostController)
+                false -> UserBottomBar(navController as NavHostController)
+                else -> {} // do nothing while checking
+            }
+        }
     ) { innerPadding ->
         Box(
             modifier = Modifier
