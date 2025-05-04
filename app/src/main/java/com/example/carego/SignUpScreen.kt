@@ -3,14 +3,17 @@ package com.example.carego
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,28 +26,32 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -56,11 +63,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -176,26 +186,13 @@ fun SignUpScreen(navController: NavController) {
     // UI for the sign-up process
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Sign Up",
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White,
-                    titleContentColor = Color.Black
-                )
-            )
+            when (currentStep) {
+                0 -> TopAppBarStep(title = "Create Your Account", navController = navController)
+                1 -> TopAppBarStep(title = "Personal Information", navController = navController)
+                2 -> TopAppBarStep(title = "Contact Information", navController = navController)
+                3 -> TopAppBarStep(title = "Account Access", navController = navController)
+                4 -> TopAppBarStep(title = "Review & Submit", navController = navController)
+            }
         }
     ) { innerPadding ->
         Column(
@@ -204,12 +201,6 @@ fun SignUpScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(16.dp)
         ) {
-            LinearProgressIndicator(
-                progress = currentStep / 3f,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            )
 
             when (currentStep) {
                         0 -> {
@@ -798,25 +789,40 @@ fun PersonalInfoStep(
     errors: Map<String, Boolean>,
     onNext: () -> Unit
 ) {
-    val months = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+    val months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
     val days = (1..31).map { it.toString() }
     val years = (1970..2025).map { it.toString() }
+    val scope = rememberCoroutineScope()
+    var isButtonEnabled by remember { mutableStateOf(true) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Create Your Account block inside TopAppBar area
+
+
         OutlinedTextField(
             value = lastName,
             onValueChange = { onLastNameChange(it.filter { c -> c.isLetter() || c.isWhitespace() }) },
             label = { Text("Last Name") },
             isError = errors["lastName"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors (focusedBorderColor = Color(0xFF3E0AE2),
+            unfocusedBorderColor = Color(0xFF3E0AE2),
+            focusedLabelColor = Color(0xFF3E0AE2),
+            unfocusedLabelColor = Color(0xFF3E0AE2)
         )
+        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = firstName,
@@ -824,86 +830,112 @@ fun PersonalInfoStep(
             label = { Text("First Name") },
             isError = errors["firstName"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+               focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2),
         )
+        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = if (noMiddleName) "" else middleName,
             onValueChange = { onMiddleNameChange(it.filter { c -> c.isLetter() || c.isWhitespace() }) },
-            label = { Text("Middle Name") },
+            label = { Text("Middle Initial") },
             isError = errors["middleName"] == true,
             enabled = !noMiddleName,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-        )
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = noMiddleName, onCheckedChange = onNoMiddleNameChange)
-            Text("I don't have a middle name")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-        Text("Birthday", fontWeight = FontWeight.SemiBold)
-
-        Row(
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+            unfocusedBorderColor = Color(0xFF3E0AE2),
+            focusedLabelColor = Color(0xFF3E0AE2),
+            unfocusedLabelColor = Color(0xFF3E0AE2),
+        )
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            DropdownBox(
-                label = "Month",
-                options = months,
-                selectedOption = birthMonth,
-                onOptionSelected = onBirthMonthChange,
-                error = errors["birthday"] == true,
-                modifier = Modifier.weight(1f)
+            Checkbox(
+                checked = noMiddleName,
+                onCheckedChange = onNoMiddleNameChange,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Color(0xFF3E0AE2),
+                    uncheckedColor = Color(0xFF3E0AE2),
+                    checkmarkColor = Color.White
+                )
             )
-            DropdownBox(
-                label = "Day",
-                options = days,
-                selectedOption = birthDay,
-                onOptionSelected = onBirthDayChange,
-                error = errors["birthday"] == true,
-                modifier = Modifier.weight(1f)
-            )
-            DropdownBox(
-                label = "Year",
-                options = years,
-                selectedOption = birthYear,
-                onOptionSelected = onBirthYearChange,
-                error = errors["birthday"] == true,
-                modifier = Modifier.weight(1f)
+            Text(
+                text = "I don't have a Middle Name",
+                color = Color(0xFF3E0AE2)
             )
         }
 
+
+
         Spacer(modifier = Modifier.height(12.dp))
-        Text("Gender", fontWeight = FontWeight.SemiBold)
+
+        Text(
+            text = "Birthday",
+            color = Color(0xFF3E0AE2),
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            DropdownBox("Month", months, birthMonth, onBirthMonthChange, errors["birthday"] == true, Modifier.weight(1f), RoundedCornerShape(20.dp))
+            DropdownBox("Day", days, birthDay, onBirthDayChange, errors["birthday"] == true, Modifier.weight(1f), RoundedCornerShape(20.dp))
+            DropdownBox("Year", years, birthYear, onBirthYearChange, errors["birthday"] == true, Modifier.weight(1f), RoundedCornerShape(20.dp))
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Gender",
+            color = Color(0xFF3E0AE2),
+            fontWeight = FontWeight.SemiBold
+        )
         Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
             listOf("Male", "Female", "Others").forEach { option ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { onGenderChange(option) }
                 ) {
-                    RadioButton(selected = gender == option, onClick = { onGenderChange(option) })
-                    Text(option)
+                    RadioButton(
+                        selected = gender == option,
+                        onClick = { onGenderChange(option) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color(0xFF3E0AE2),
+                            unselectedColor = Color(0xFF3E0AE2)
+                        )
+                    )
+                    Text(
+                        text = option,
+                        color = Color(0xFF3E0AE2)
+                    )
                 }
             }
         }
+
 
         Spacer(modifier = Modifier.height(12.dp))
 
         if (userType == "User") {
             DropdownBox(
                 label = "Type of PWD",
-                options = listOf("Visual Disability",
-                    "Hearing Disability",
-                    "Speech and Language Disability",
-                    "Physical Disability",
-                    "Mental/Intellectual Disability",
-                    "Psychosocial Disability",
-                    "Disability Due to Chronic Illness",),
+                options = listOf(
+                    "Visual Disability", "Hearing Disability", "Speech and Language Disability",
+                    "Physical Disability", "Mental/Intellectual Disability",
+                    "Psychosocial Disability", "Disability Due to Chronic Illness", "Others"
+                ),
                 selectedOption = pwdType,
                 onOptionSelected = onPWDTypeChange,
-                error = errors["pwdType"] == true
+                error = errors["pwdType"] == true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp)
             )
         } else {
             DropdownBox(
@@ -914,24 +946,50 @@ fun PersonalInfoStep(
                     onProfessionChange(it)
                     onNoLicenseChange(false)
                 },
-                error = errors["profession"] == true
+                error = errors["profession"] == true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp)
             )
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Checkbox(checked = noLicense, onCheckedChange = {
                     onNoLicenseChange(it)
                     if (it) onProfessionChange("")
                 })
-                Text("I don't have a license")
+                Text("I don’t have a license")
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onNext, modifier = Modifier.fillMaxWidth()) {
-            Text("Next")
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                if (isButtonEnabled) {
+                    isButtonEnabled = false
+                    scope.launch {
+                        onNext()
+                        delay(2000)
+                        isButtonEnabled = true
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFED3782),
+                contentColor = Color.White
+            )
+        ) {
+            Text("Next", fontSize = 16.sp)
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DropdownBox(
@@ -940,52 +998,79 @@ fun DropdownBox(
     selectedOption: String,
     onOptionSelected: (String) -> Unit,
     error: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = RoundedCornerShape(20.dp)
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded }
-        ) {
-            OutlinedTextField(
-                value = selectedOption,
-                onValueChange = {},
-                label = { Text(label) },
-                readOnly = true,
-                isError = error,
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth()
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = selectedOption,
+            onValueChange = {},
+            readOnly = true,
+            label = {
+                Text(
+                    text = label,
+                    color = if (error) MaterialTheme.colorScheme.error else Color(0xFF3E0AE2),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            },
+            isError = error,
+            shape = shape,
+            singleLine = true,
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                cursorColor = Color(0xFF3E0AE2)
             )
+        )
 
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                options.forEach { selectionOption ->
-                    DropdownMenuItem(
-                        text = { Text(selectionOption) },
-                        onClick = {
-                            onOptionSelected(selectionOption)
-                            expanded = false
-                        }
-                    )
-                }
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 240.dp) // Max 5 visible items
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = option,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    onClick = {
+                        onOptionSelected(option)
+                        expanded = false
+                    }
+                )
             }
         }
+    }
 
-        if (error) {
-            Text(
-                text = "This field is required",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-            )
-        }
+    if (error) {
+        Text(
+            text = "This field is required",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+        )
     }
 }
+
+
+
 fun validatePersonalInfoSimple(
     context: Context,
     errors: MutableMap<String, Boolean>,
@@ -1318,4 +1403,59 @@ fun ScrollableAgreementDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TopAppBarStep(title: String, navController: NavController) {
+    if (title == "Personal Information") {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF82E6E0), shape = RoundedCornerShape(bottomEnd = 24.dp, bottomStart = 24.dp))
+                    .padding(top = 48.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
+                        }
+                        Text(
+                            text = "Sign Up",
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                    }
+
+
+                    Text(
+                        text = "Create Your \nAccount",
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 45.sp,
+                        lineHeight = 45.sp,
+                    )
+                }
+            }
+        }
+    } else {
+        TopAppBar(
+            title = { Text(title) },
+            navigationIcon = {
+                IconButton(onClick = { navController.popBackStack() }) {
+                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+            }
+        )
+    }
+}
 
