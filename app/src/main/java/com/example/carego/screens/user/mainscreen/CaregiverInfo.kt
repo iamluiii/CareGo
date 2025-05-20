@@ -14,5 +14,6 @@ data class CaregiverInfo(
     val license: String? = "",        // ✅ fix: default to blank string
     val address: String = "",        // ✅ fix: default to blank string
     val password: String = "",       // ✅ fix: default to blank string
-    val availabilities: List<Pair<String, String>> = emptyList()
+    val availabilities: List<Pair<String, String>> = emptyList(),
+    val salaryRate: Double = 0.0 // ✅ Add salary rate
 )

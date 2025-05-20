@@ -2,10 +2,8 @@ package com.example.carego.screens.caregiver.mainscreen
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,20 +17,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.DismissDirection
-import androidx.compose.material.DismissState
-import androidx.compose.material.DismissValue
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.Scaffold
-import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.rememberDismissState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -58,7 +50,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -72,11 +63,9 @@ import com.example.carego.R
 import com.example.carego.data.Appointment
 import com.example.carego.navigation.Screen
 import com.example.carego.screens.availabilityscreen.AvailabilityDatePicker
+import com.example.carego.screens.user.mainscreen.BottomNavItem
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -87,38 +76,53 @@ fun CareGiverMainScreen(navController: NavController) {
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
     val savedAvailability = remember { mutableStateListOf<Appointment>() }
+    val confirmedAppointments = remember { mutableStateListOf<Appointment>() }
+    val pendingAppointments = remember { mutableStateListOf<Appointment>() }
+    val ongoingAppointments = remember { mutableStateListOf<Appointment>() }
     val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
     var fullName by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var licenseType by remember { mutableStateOf("") }
-    val confirmedAppointments = remember { mutableStateListOf<Appointment>() } // ⬅️ you forgot to declare this!
-    val pendingAppointments = remember { mutableStateListOf<Appointment>() }
-    val ongoingAppointments = remember { mutableStateListOf<Appointment>() }
-
+    var isVerified by remember { mutableStateOf(false) }
+    var isVerificationPending by remember { mutableStateOf(false) }
+    var showAddAvailabilityDialog by remember { mutableStateOf(false) }
     var showEditDialogForDate by remember { mutableStateOf<String?>(null) }
     var currentEditTimes by remember { mutableStateOf<List<String>>(emptyList()) }
-    var showAddAvailabilityDialog by remember { mutableStateOf(false) }
+
 
     val hasLoadedProfile = remember { mutableStateOf(false) }
+    val hasLoadedAppointments = remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
 
     LaunchedEffect(currentUserId) {
         if (currentUserId != null && !hasLoadedProfile.value) {
             hasLoadedProfile.value = true
-            loadCaregiverProfile(
-                onProfileLoaded = { loadedUsername, loadedFullName, loadedLicenseType ->
-                    username = loadedUsername
-                    fullName = loadedFullName
-                    licenseType = loadedLicenseType
+
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val snapshot = db.collection("caregivers").document(currentUserId).get().await()
+
+                username = snapshot.getString("username") ?: "Unknown"
+                fullName = snapshot.getString("fullName") ?: "Unknown"
+                licenseType = snapshot.getString("license") ?: "Unknown"
+                isVerified = snapshot.getString("verificationStatus") == "verified"
+                isVerificationPending = snapshot.getString("verificationStatus") == "pending"
+
+            } catch (e: Exception) {
+                // ✅ Use Main Dispatcher to show Toast
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    Toast.makeText(context, "Failed to load profile.", Toast.LENGTH_SHORT).show()
                 }
-            )
+            }
         }
     }
-    val hasLoadedAppointments = remember { mutableStateOf(false) }
+
     LaunchedEffect(currentUserId) {
         if (currentUserId != null && !hasLoadedAppointments.value) {
             hasLoadedAppointments.value = true
-
             val db = FirebaseFirestore.getInstance()
+
             db.collection("appointments")
                 .whereEqualTo("caregiverId", currentUserId)
                 .addSnapshotListener { snapshot, error ->
@@ -129,119 +133,64 @@ fun CareGiverMainScreen(navController: NavController) {
                     confirmedAppointments.clear()
                     ongoingAppointments.clear()
 
-                    val jobs = mutableListOf<Job>()
+                    snapshot.documents.forEach { doc ->
+                        val userId = doc.getString("userId") ?: ""
+                        val appointment = Appointment(
+                            id = doc.id,
+                            caregiverId = doc.getString("caregiverId") ?: "",
+                            userId = userId,
+                            username = doc.getString("username") ?: "Unknown",
+                            date = doc.getString("date") ?: "",
+                            timeSlot = doc.getString("timeSlot") ?: "",
+                            status = doc.getString("status") ?: "",
+                            municipality = doc.getString("municipality") ?: "",
+                            pwdType = doc.getString("pwdType") ?: ""
+                        )
 
 
-                    coroutineScope.launch {
-                        val jobs = snapshot.documents.map { doc ->
-                            launch {
-                                val status = doc.getString("status") ?: ""
-                                val userId = doc.getString("userId") ?: ""
-                                val caregiverUsername = doc.getString("caregiverUsername") ?: ""
 
-                                val username = if (status.lowercase() == "pending" && userId.isNotEmpty()) {
-                                    try {
-                                        val userDoc = db.collection("users").document(userId).get().await()
-                                        userDoc.getString("username") ?: "Unknown"
-                                    } catch (e: Exception) {
-                                        "Unknown"
-                                    }
-                                } else {
-                                    caregiverUsername
-                                }
 
-                                val appointment = Appointment(
-                                    id = doc.id,
-                                    caregiverId = doc.getString("caregiverId") ?: "",
-                                    userId = userId,
-                                    username = username,
-                                    date = doc.getString("date") ?: "",
-                                    timeSlot = doc.getString("timeSlot") ?: "",
-                                    status = status,
-                                    municipality = doc.getString("municipality") ?: "",
-                                    pwdType = doc.getString("pwdType") ?: ""
-                                )
+                        if (appointment.status.lowercase() in listOf("confirmed", "ongoing") && userId.isNotBlank()) {
+                            coroutineScope.launch {
+                                try {
+                                    val userDoc = db.collection("users").document(userId).get().await()
+                                    val updatedUsername = userDoc.getString("username") ?: "Unknown"
+                                    val updatedPwdType = userDoc.getString("pwdType") ?: "Unknown"
 
-                                when (status.lowercase()) {
-                                    "available" -> {
-                                        if (savedAvailability.none { it.id == appointment.id }) {
-                                            savedAvailability.add(appointment)
-                                        }
-                                    }
-                                    "pending" -> pendingAppointments.add(appointment)
+                                    // Update the appointment in place without duplicating
+                                    val updatedAppointment = appointment.copy(
+                                        username = updatedUsername,
+                                        pwdType = updatedPwdType
+                                    )
 
-                                    "confirmed" -> {
-                                        try {
-                                            val userDoc = db.collection("users").document(appointment.userId).get().await()
-                                            val firstName = userDoc.getString("firstName") ?: ""
-                                            val lastName = userDoc.getString("lastName") ?: ""
-                                            val middleName = userDoc.getString("middleName") ?: ""
-                                            val fullName = listOf(lastName, firstName, middleName)
-                                                .filter { it.isNotEmpty() && it.lowercase() != "null" }
-                                                .joinToString(" ")
-
-                                            val address = userDoc.getString("address") ?: ""
-                                            val pwdType = userDoc.getString("pwdType") ?: ""
-
-                                            val enriched = appointment.copy(
-                                                patientName = fullName,
-                                                location = address,
-                                                time = appointment.timeSlot,
-                                                pwdType = pwdType
-                                            )
-
-                                            if (confirmedAppointments.none {
-                                                    it.date == enriched.date &&
-                                                            it.time == enriched.time &&
-                                                            it.patientName == enriched.patientName
-                                                }) {
-                                                confirmedAppointments.add(enriched)
-                                            }
-                                        } catch (_: Exception) {}
+                                    if (appointment.status.lowercase() == "confirmed") {
+                                        confirmedAppointments.removeIf { it.id == appointment.id }
+                                        confirmedAppointments.add(updatedAppointment)
                                     }
 
-                                    "ongoing" -> {
-                                        try {
-                                            val userDoc = db.collection("users").document(appointment.userId).get().await()
-                                            val firstName = userDoc.getString("firstName") ?: ""
-                                            val lastName = userDoc.getString("lastName") ?: ""
-                                            val middleName = userDoc.getString("middleName") ?: ""
-                                            val fullName = listOf(lastName, firstName, middleName)
-                                                .filter { it.isNotEmpty() && it.lowercase() != "null" }
-                                                .joinToString(" ")
-
-                                            val address = userDoc.getString("address") ?: ""
-                                            val fetchedPwdType = userDoc.getString("pwdType") ?: ""
-
-                                            val enriched = appointment.copy(
-                                                patientName = fullName,
-                                                location = address,
-                                                time = appointment.timeSlot,
-                                                pwdType = fetchedPwdType // ✅ this now works
-                                            )
-
-                                            if (ongoingAppointments.none {
-                                                    it.date == enriched.date &&
-                                                            it.time == enriched.time &&
-                                                            it.patientName == enriched.patientName
-                                                }) {
-                                                ongoingAppointments.add(enriched)
-                                            }
-                                        } catch (_: Exception) {}
+                                    if (appointment.status.lowercase() == "ongoing") {
+                                        ongoingAppointments.removeIf { it.id == appointment.id }
+                                        ongoingAppointments.add(updatedAppointment)
                                     }
+
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
                                 }
                             }
                         }
 
-                        jobs.joinAll() // wait for all launched coroutines to finish
-                    }
-
-                    coroutineScope.launch {
-                        jobs.joinAll()
+                        when (appointment.status.lowercase()) {
+                            "available" -> savedAvailability.add(appointment)
+                            "pending" -> pendingAppointments.add(appointment)
+                            "confirmed" -> confirmedAppointments.add(appointment)
+                            "ongoing" -> ongoingAppointments.add(appointment)
+                        }
                     }
                 }
         }
     }
+
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -250,7 +199,6 @@ fun CareGiverMainScreen(navController: NavController) {
         },
         bottomBar = {
             CareGiverBottomBar(navController)
-
         }
     ) { innerPadding ->
         Column(
@@ -260,17 +208,42 @@ fun CareGiverMainScreen(navController: NavController) {
                 .padding(horizontal = 24.dp)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
-        )
-{
-
-            CareGiverProfileRow(
-                username = username,
-                licenseType = licenseType,
-                navController = navController
-            )
+        ) {
+            // Profile Card
+            CareGiverProfileRow(username = username, licenseType = licenseType, navController = navController)
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Verification Card
+
+            if (!isVerified) {
+                if (isVerificationPending) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Verification is Pending",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    CareGiverVerificationCard(navController)
+                }
+
+                // ⛔️ Instead of returning, just stop the rest of the content
+                return@Column
+            }
+
+            // Availability Button
             Button(
                 onClick = { showAddAvailabilityDialog = true },
                 modifier = Modifier.fillMaxWidth()
@@ -279,70 +252,22 @@ fun CareGiverMainScreen(navController: NavController) {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            // Available Dates Section
             Text("Your Available Dates:", fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
 
             if (savedAvailability.isNotEmpty()) {
-                val uniqueAvailability = savedAvailability
+                savedAvailability
                     .distinctBy { it.id }
                     .sortedBy { it.date }
-
-                uniqueAvailability.forEach { appointment ->
-                    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-                    val dismissState = rememberDismissState(
-                        confirmStateChange = { dismissValue ->
-                            if (dismissValue == DismissValue.DismissedToStart) {
-                                showDeleteConfirm = true
-                            }
-                            false
-                        }
-                    )
-
-                    SwipeToDismiss(
-                        state = dismissState,
-                        directions = setOf(DismissDirection.EndToStart),
-                        background = { DismissBackground(dismissState) },
-                        dismissContent = {
-                            AvailabilityCard(appointment.date, appointment.timeSlot)
-                        }
-                    )
-
-                    if (showDeleteConfirm) {
-                        AlertDialog(
-                            onDismissRequest = {
-                                showDeleteConfirm = false
-                                coroutineScope.launch { dismissState.reset() } // ✅ reset swipe
-                            },
-                            title = { Text("Delete Availability") },
-                            text = { Text("Are you sure you want to delete ${appointment.date} - ${appointment.timeSlot}?") },
-                            confirmButton = {
-                                Button(onClick = {
-                                    FirebaseFirestore.getInstance()
-                                        .collection("appointments")
-                                        .document(appointment.id)
-                                        .delete()
-                                    savedAvailability.remove(appointment)
-                                    showDeleteConfirm = false
-                                    coroutineScope.launch { dismissState.reset() } // ✅ reset swipe after delete too
-                                }) {
-                                    Text("Delete")
-                                }
-                            },
-                            dismissButton = {
-                                OutlinedButton(onClick = {
-                                    showDeleteConfirm = false
-                                    coroutineScope.launch { dismissState.reset() } // ✅ reset swipe
-                                }) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
+                    .forEach { appointment ->
+                        AvailabilityCard(appointment.date, appointment.timeSlot)
                     }
-                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Pending Bookings Section
             if (pendingAppointments.isNotEmpty()) {
                 Text("Pending Bookings", fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
 
@@ -350,27 +275,35 @@ fun CareGiverMainScreen(navController: NavController) {
                     PendingBookingItem(appointment, navController)
                 }
             }
+// Upcoming Appointments Section
+            // Upcoming Appointments Section
+            if (confirmedAppointments.isNotEmpty()) {
+                UpcomingAppointmentsList(appointments = confirmedAppointments, navController = navController)
+            }
 
-    UpcomingAppointmentsList(confirmedAppointments, navController)
-    OngoingAppointmentsList(ongoingAppointments, navController)
+
+            // Ongoing Appointments Section
+            OngoingAppointmentsList(
+                appointments = ongoingAppointments,
+                navController = navController,
+            )
 
 
-    Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
-
+    // Show Add Availability Dialog
     if (showAddAvailabilityDialog) {
         AvailabilityDatePicker(
             savedAvailability = savedAvailability,
             onDateSaved = {
                 showAddAvailabilityDialog = false
-
             }
         )
     }
 
-
+    // Show Edit Availability Dialog
     showEditDialogForDate?.let { date ->
         EditAvailabilityDialog(
             date = date,
@@ -380,11 +313,12 @@ fun CareGiverMainScreen(navController: NavController) {
                 updateAvailability(date, currentEditTimes, newTimes, savedAvailability)
                 showEditDialogForDate = null
             }
-
         )
-
     }
 }
+
+
+
 
 
 @Composable
@@ -397,30 +331,31 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
         text = "Upcoming Appointments",
         fontSize = 18.sp,
         fontWeight = FontWeight.SemiBold,
-        fontFamily = FontFamily.SansSerif,
         modifier = Modifier.padding(top = 16.dp)
     )
 
     if (appointments.isEmpty()) {
         Text(
-            text = "No appointments yet.",
+            text = "No upcoming appointments yet.",
             fontSize = 14.sp,
-            modifier = Modifier.padding(top = 8.dp),
-            fontFamily = FontFamily.SansSerif
+            modifier = Modifier.padding(top = 8.dp)
         )
     } else {
         appointments.forEach { appointment ->
             var profileImageUrl by remember { mutableStateOf<String?>(null) }
+            var username by remember { mutableStateOf("Loading...") }
             var pwdType by remember { mutableStateOf("") }
             var showStartDialog by remember { mutableStateOf(false) }
 
             LaunchedEffect(appointment.userId) {
-                db.collection("users").document(appointment.userId)
-                    .get()
-                    .addOnSuccessListener { doc ->
-                        profileImageUrl = doc.getString("profileImageUrl")
-                        pwdType = doc.getString("pwdType") ?: ""
-                    }
+                try {
+                    val userDoc = db.collection("users").document(appointment.userId).get().await()
+                    profileImageUrl = userDoc.getString("profileImageUrl")
+                    username = userDoc.getString("username") ?: "Unknown"
+                    pwdType = userDoc.getString("pwdType") ?: "Unknown"
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             Card(
@@ -444,10 +379,10 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(appointment.username, fontFamily = FontFamily.SansSerif)
-                            Text(pwdType, fontFamily = FontFamily.SansSerif)
-                            Text(appointment.date, fontFamily = FontFamily.SansSerif)
-                            Text(appointment.timeSlot, fontFamily = FontFamily.SansSerif)
+                            Text(username, style = MaterialTheme.typography.titleMedium)
+                            Text(pwdType, style = MaterialTheme.typography.bodyMedium)
+                            Text(appointment.date, style = MaterialTheme.typography.bodyMedium)
+                            Text(appointment.timeSlot, style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -464,9 +399,11 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
                         ) {
                             Text("Chat")
                         }
-                        Button(onClick = {
-                            showStartDialog = true
-                        }) {
+                        Button(
+                            onClick = {
+                                showStartDialog = true
+                            }
+                        ) {
                             Text("Start")
                         }
                     }
@@ -477,16 +414,27 @@ fun UpcomingAppointmentsList(appointments: List<Appointment>, navController: Nav
                             title = { Text("Start Appointment") },
                             text = { Text("Are you sure you want to start this appointment?") },
                             confirmButton = {
-                                Button(onClick = {
-                                    coroutineScope.launch {
-                                        db.collection("appointments")
-                                            .document(appointment.id)
-                                            .update("status", "Ongoing")
-                                        delay(2000)
-                                        Toast.makeText(context, "Appointment started.", Toast.LENGTH_SHORT).show()
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            try {
+                                                db.collection("appointments")
+                                                    .document(appointment.id)
+                                                    .update("status", "Ongoing")
+                                                    .await()
+
+                                                // Show a confirmation toast
+                                                Toast.makeText(context, "Appointment started.", Toast.LENGTH_SHORT).show()
+
+                                                // Refresh the appointment list
+                                                showStartDialog = false
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                                Toast.makeText(context, "Failed to start appointment. Try again.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     }
-                                    showStartDialog = false
-                                }) {
+                                ) {
                                     Text("Yes, Start")
                                 }
                             },
@@ -512,11 +460,12 @@ fun CareGiverProfileRow(username: String, licenseType: String, navController: Na
 
     LaunchedEffect(userId) {
         userId?.let {
-            FirebaseFirestore.getInstance().collection("caregivers").document(it)
-                .get()
-                .addOnSuccessListener { doc ->
-                    profileImageUrl = doc.getString("profileImageUrl")
-                }
+            try {
+                val doc = FirebaseFirestore.getInstance().collection("caregivers").document(it).get().await()
+                profileImageUrl = doc.getString("profileImageUrl")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -543,12 +492,13 @@ fun CareGiverProfileRow(username: String, licenseType: String, navController: Na
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column {
-                Text("Username: @$username", style = MaterialTheme.typography.titleMedium)
-                Text("License Type: $licenseType", style = MaterialTheme.typography.bodyMedium)
+                Text("Username: @$username", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("License Type: $licenseType", fontSize = 14.sp)
             }
         }
     }
 }
+
 
 @Composable
 fun EditAvailabilityDialog(
@@ -625,26 +575,6 @@ fun EditAvailabilityDialog(
     )
 }
 
-
-@OptIn(ExperimentalMaterialApi::class)
-@Composable
-fun DismissBackground(dismissState: DismissState) {
-    val direction = dismissState.dismissDirection ?: return
-    if (direction != DismissDirection.EndToStart) return // ⬅️ only show for delete
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFFFCDD2))
-            .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.CenterEnd
-    ) {
-        Icon(Icons.Default.Delete, contentDescription = null)
-    }
-}
-
-
-
 @Composable
 fun AvailabilityCard(date: String, displayTime: String) {
     Card(
@@ -669,20 +599,25 @@ fun AvailabilityCard(date: String, displayTime: String) {
         }
     }
 }
+
 @Composable
 fun PendingBookingItem(appointment: Appointment, navController: NavController) {
     val db = FirebaseFirestore.getInstance()
     var pwdType by remember { mutableStateOf("") }
     var profileImageUrl by remember { mutableStateOf<String?>(null) }
+    var username by remember { mutableStateOf("Loading...") }
 
+    // Fetch user details
     LaunchedEffect(appointment.userId) {
         if (appointment.userId.isNotEmpty()) {
-            db.collection("users").document(appointment.userId)
-                .get()
-                .addOnSuccessListener { document ->
-                    pwdType = document.getString("pwdType") ?: ""
-                    profileImageUrl = document.getString("profileImageUrl")
-                }
+            try {
+                val userDoc = db.collection("users").document(appointment.userId).get().await()
+                username = userDoc.getString("username") ?: "Unknown"
+                pwdType = userDoc.getString("pwdType") ?: ""
+                profileImageUrl = userDoc.getString("profileImageUrl")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -709,7 +644,7 @@ fun PendingBookingItem(appointment: Appointment, navController: NavController) {
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(appointment.username, fontFamily = FontFamily.SansSerif)
+                Text(username, fontFamily = FontFamily.SansSerif)
                 Text(pwdType, fontFamily = FontFamily.SansSerif)
                 Text(appointment.date, fontFamily = FontFamily.SansSerif)
                 Text(appointment.timeSlot, fontFamily = FontFamily.SansSerif)
@@ -782,7 +717,10 @@ fun updateAvailability(
 
 
 @Composable
-fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavController) {
+fun OngoingAppointmentsList(
+    appointments: List<Appointment>,
+    navController: NavController
+) {
     val db = FirebaseFirestore.getInstance()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -791,30 +729,30 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
         text = "Ongoing Appointments",
         fontSize = 18.sp,
         fontWeight = FontWeight.SemiBold,
-        fontFamily = FontFamily.SansSerif,
-        modifier = Modifier.padding(top = 16.dp)
+        modifier = Modifier.padding(vertical = 8.dp)
     )
 
     if (appointments.isEmpty()) {
         Text(
             text = "No ongoing appointments yet.",
             fontSize = 14.sp,
-            modifier = Modifier.padding(top = 8.dp),
-            fontFamily = FontFamily.SansSerif
+            modifier = Modifier.padding(top = 8.dp)
         )
     } else {
         appointments.forEach { appointment ->
             var profileImageUrl by remember { mutableStateOf<String?>(null) }
+            var username by remember { mutableStateOf("Loading...") }
             var pwdType by remember { mutableStateOf("") }
-            var showFinishDialog by remember { mutableStateOf(false) }
 
             LaunchedEffect(appointment.userId) {
-                db.collection("users").document(appointment.userId)
-                    .get()
-                    .addOnSuccessListener { doc ->
-                        profileImageUrl = doc.getString("profileImageUrl")
-                        pwdType = doc.getString("pwdType") ?: ""
-                    }
+                try {
+                    val userDoc = db.collection("users").document(appointment.userId).get().await()
+                    profileImageUrl = userDoc.getString("profileImageUrl")
+                    username = userDoc.getString("username") ?: "Unknown"
+                    pwdType = userDoc.getString("pwdType") ?: "Unknown"
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             Card(
@@ -838,10 +776,10 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(appointment.username, fontFamily = FontFamily.SansSerif)
-                            Text(pwdType, fontFamily = FontFamily.SansSerif)
-                            Text(appointment.date, fontFamily = FontFamily.SansSerif)
-                            Text(appointment.timeSlot, fontFamily = FontFamily.SansSerif)
+                            Text(username, style = MaterialTheme.typography.titleMedium)
+                            Text(pwdType, style = MaterialTheme.typography.bodyMedium)
+                            Text(appointment.date, style = MaterialTheme.typography.bodyMedium)
+                            Text(appointment.timeSlot, style = MaterialTheme.typography.bodySmall)
                         }
                     }
 
@@ -859,47 +797,35 @@ fun OngoingAppointmentsList(appointments: List<Appointment>, navController: NavC
                             Text("Chat")
                         }
 
+                        // ✅ Mark as Done Button (No Feedback Logic Here)
                         Button(
                             onClick = {
-                                showFinishDialog = true
+                                coroutineScope.launch {
+                                    try {
+                                        db.collection("appointments")
+                                            .document(appointment.id)
+                                            .update("status", "done")
+                                            .await()
+
+                                        Toast.makeText(context, "Appointment marked as done.", Toast.LENGTH_SHORT).show()
+
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        Toast.makeText(context, "Failed to mark as done. Try again.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             }
                         ) {
                             Text("Mark as Done")
                         }
-                    }
-
-                    if (showFinishDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showFinishDialog = false },
-                            title = { Text("Finish Appointment") },
-                            text = { Text("Are you sure this appointment is completed?") },
-                            confirmButton = {
-                                Button(onClick = {
-                                    coroutineScope.launch {
-                                        db.collection("appointments")
-                                            .document(appointment.id)
-                                            .update("status", "Finished")
-
-                                        delay(2000)
-                                        Toast.makeText(context, "Appointment marked as finished.", Toast.LENGTH_SHORT).show()
-                                    }
-                                    showFinishDialog = false
-                                }) {
-                                    Text("Yes, Finish")
-                                }
-                            },
-                            dismissButton = {
-                                OutlinedButton(onClick = { showFinishDialog = false }) {
-                                    Text("Cancel")
-                                }
-                            }
-                        )
                     }
                 }
             }
         }
     }
 }
+
+
 
 
 
@@ -932,10 +858,40 @@ fun CareGiverBottomBar(navController: NavController) {
         }
     }
 }
+@Composable
+fun CareGiverVerificationCard(navController: NavController) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp)
+            .clickable { navController.navigate("caregiver_verification") },
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Verify Your Identity",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    navController.navigate("caregiver_verification")
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Upload Valid ID")
+            }
+        }
+    }
+}
+
 
 data class BottomNavItem(
     val label: String,
     val icon: ImageVector,
     val route: String
 )
-

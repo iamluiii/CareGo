@@ -2,21 +2,22 @@ package com.example.carego.screens.availabilityscreen
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
@@ -28,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -61,6 +63,7 @@ fun AvailabilityDatePicker(
     var showDialog by remember { mutableStateOf(true) }
     var selectedDate by remember { mutableStateOf("") }
     var selectedSlots by remember { mutableStateOf(listOf<String>()) }
+    var salaryRate by remember { mutableStateOf("") }
 
     val todayCalendar = Calendar.getInstance()
     var currentMonth by remember { mutableStateOf(todayCalendar.get(Calendar.MONTH)) }
@@ -76,11 +79,17 @@ fun AvailabilityDatePicker(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (selectedDate.isNotEmpty() && selectedSlots.isNotEmpty()) {
+                        if (selectedDate.isNotEmpty() && selectedSlots.isNotEmpty() && salaryRate.isNotBlank()) {
                             val caregiverId = uid
-                            // Load caregiver info first
+                            // Validate the salary rate
+                            val rate = salaryRate.toDoubleOrNull()
+                            if (rate == null || rate <= 0.0) {
+                                Toast.makeText(context, "Please enter a valid salary rate.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
+                            // Save availability to Firestore
                             if (caregiverId != null) {
-                                val db = FirebaseFirestore.getInstance()
                                 db.collection("caregivers").document(caregiverId)
                                     .get()
                                     .addOnSuccessListener { document ->
@@ -96,10 +105,12 @@ fun AvailabilityDatePicker(
                                                 "municipality" to municipality,
                                                 "date" to selectedDate,
                                                 "timeSlot" to time,
+                                                "salaryRate" to rate,
                                                 "status" to "available"
                                             )
                                             db.collection("appointments").add(appointment)
                                         }
+                                        Toast.makeText(context, "Availability saved successfully.", Toast.LENGTH_SHORT).show()
                                         onDateSaved()
                                         showDialog = false
                                     }
@@ -108,30 +119,34 @@ fun AvailabilityDatePicker(
                                     }
                             }
                         } else {
-                            Toast.makeText(context, "Please select a date and at least one time slot.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Please select a date, time slot, and enter a salary rate.", Toast.LENGTH_SHORT).show()
                         }
                     }
                 ) {
                     Text("Confirm")
                 }
-            }
-,
+            },
             dismissButton = {
                 OutlinedButton(
                     onClick = {
                         showDialog = false
-                        onDateSaved() // ✅ triggers parent to hide dialog and unblock UI
+                        onDateSaved()
                     }
                 ) {
                     Text("Cancel")
                 }
-
             },
             title = { Text("Select Availability") },
             text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Month Selector
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -164,110 +179,153 @@ fun AvailabilityDatePicker(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(7),
-                        modifier = Modifier.height(280.dp)
+                    // Calendar Grid Wrapper
+                    // Calendar Grid Wrapper
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color.Gray, shape = MaterialTheme.shapes.medium)
+                            .padding(4.dp)
                     ) {
-                        items(daysInMonth) { day ->
-                            val calendar = Calendar.getInstance()
-                            calendar.set(currentYear, currentMonth, day)
-                            val dateFormat = SimpleDateFormat("MM/dd/yyyy", Locale.getDefault())
-                            val formattedDate = dateFormat.format(calendar.time)
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(7),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 200.dp, max = 260.dp) // ✅ Proper height control
+                                .background(Color.White), // Prevent overlap
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            items(daysInMonth) { day ->
+                                val calendar = Calendar.getInstance()
+                                calendar.set(currentYear, currentMonth, day)
+                                val dateFormat = SimpleDateFormat("MM/dd/yyyy", Locale.getDefault())
+                                val formattedDate = dateFormat.format(calendar.time)
 
-                            val maxSelectableDate = Calendar.getInstance().apply {
-                                add(Calendar.DAY_OF_YEAR, 14)
-                            }
+                                val maxSelectableDate = Calendar.getInstance().apply {
+                                    add(Calendar.DAY_OF_YEAR, 14)
+                                }
 
-                            val isPastDate = calendar.before(todayCalendar)
-                            val isBeyondTwoWeeks = calendar.after(maxSelectableDate)
-                            val isAlreadySelected = savedAvailability.any { it.date == formattedDate }
-                            val isDisabled = isPastDate || isAlreadySelected || isBeyondTwoWeeks
+                                val isPastDate = calendar.before(todayCalendar)
+                                val isBeyondTwoWeeks = calendar.after(maxSelectableDate)
+                                val isAlreadySelected = savedAvailability.any { it.date == formattedDate }
+                                val isDisabled = isPastDate || isAlreadySelected || isBeyondTwoWeeks
+                                val isCurrentlySelected = selectedDate == formattedDate
 
-
-                            val isCurrentlySelected = selectedDate == formattedDate
-
-                            Box(
-                                modifier = Modifier
-                                    .aspectRatio(1f)
-                                    .padding(4.dp)
-                                    .background(
-                                        when {
-                                            isDisabled -> Color.LightGray
-                                            isCurrentlySelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                                            else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                Box(
+                                    modifier = Modifier
+                                        .aspectRatio(1f)
+                                        .padding(2.dp)
+                                        .background(
+                                            when {
+                                                isDisabled -> Color.LightGray
+                                                isCurrentlySelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                                else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                            },
+                                            shape = MaterialTheme.shapes.medium
+                                        )
+                                        .clickable(enabled = !isDisabled) {
+                                            selectedDate = formattedDate
                                         },
-                                        shape = MaterialTheme.shapes.medium
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = day.toString(),
+                                        color = if (isDisabled) Color.Gray else Color.Black,
+                                        fontWeight = if (isCurrentlySelected) FontWeight.Bold else FontWeight.Normal
                                     )
-                                    .clickable(enabled = !isDisabled) {
-                                        selectedDate = formattedDate
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = day.toString(),
-                                    color = if (isDisabled) Color.Gray else Color.Black,
-                                    fontWeight = if (isCurrentlySelected) FontWeight.Bold else FontWeight.Normal
-                                )
+                                }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+
+
+
+                    // Reduced gap here
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     if (selectedDate.isNotEmpty()) {
-                        Text("Select Time", fontWeight = FontWeight.Medium)
+                        Text("Select Time", fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp))
 
                         val allSlots = listOf("Morning", "Afternoon", "Night", "Whole Day")
 
-                        allSlots.forEach { slot ->
-                            val isWholeDaySelected = selectedSlots.contains("Whole Day")
-                            val isOtherSelected = selectedSlots.any { it != "Whole Day" }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp)
+                        ) {
+                            allSlots.forEach { slot ->
+                                val isChecked = selectedSlots.contains(slot)
 
-                            val enabled = when (slot) {
-                                "Whole Day" -> !isOtherSelected
-                                else -> !isWholeDaySelected
-                            }
-
-                            val isChecked = selectedSlots.contains(slot)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                                    .toggleable(
-                                        value = isChecked,
-                                        enabled = enabled,
-                                        onValueChange = { checked ->
-                                            selectedSlots = if (checked) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            selectedSlots = if (isChecked) {
+                                                selectedSlots - slot
+                                            } else {
                                                 if (slot == "Whole Day") listOf("Whole Day")
                                                 else selectedSlots + slot
-                                            } else {
-                                                selectedSlots - slot
                                             }
-                                        }
-                                    ),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = null,
-                                    enabled = enabled,
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = MaterialTheme.colorScheme.primary
+                                        },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = null, // Use Row click for consistent behavior
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = MaterialTheme.colorScheme.primary
+                                        )
                                     )
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(slot)
+                                    Text(slot)
+                                }
                             }
                         }
+
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                        // Salary Rate Input
+                        Text("Salary per Session", fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 16.dp))
+
+                        OutlinedTextField(
+                            value = salaryRate,
+                            onValueChange = { input ->
+                                // Allow only numbers, no letters or special characters
+                                salaryRate = input.filter { it.isDigit() }
+                            },
+                            singleLine = true,
+                            placeholder = { Text("e.g., 500") },
+                            leadingIcon = {
+                                Text(
+                                    text = "PHP",
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        )
+
+                        Text(
+                            text = "5% of the earnings will be charged",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+
                     }
                 }
             }
         )
     }
 }
+
+
+
+
 
 fun generateDaysInMonth(month: Int, year: Int): List<Int> {
     val calendar = Calendar.getInstance()

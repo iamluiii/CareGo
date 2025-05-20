@@ -4,12 +4,14 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,7 +32,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -44,7 +46,6 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -64,6 +66,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -203,48 +206,69 @@ fun SignUpScreen(navController: NavController) {
         ) {
 
             when (currentStep) {
-                        0 -> {
-                            Text("Select Type", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                0 -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // 🔹 App logo at the top
+                        Image(
+                            painter = painterResource(id = R.drawable.caregologo),
+                            contentDescription = "App Logo",
+                            modifier = Modifier
+                                .size(150.dp)
+                                .padding(bottom = 16.dp)
+                        )
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                        // 🔹 Title text
+                        Text(
+                            text = "SELECT TYPE OF USER:",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = Color(0xFF3E0AE2),
+                            modifier = Modifier.padding(bottom = 24.dp)
+                        )
 
-                            Row(
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Image(
-                                        painter = painterResource(id = R.drawable.caregologo),
-                                        contentDescription = "User Logo",
-                                        modifier = Modifier.size(80.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Button(onClick = {
-                                        userType = "User"
-                                        currentStep = 1
-                                    }) {
-                                        Text("User")
-                                    }
-                                }
+                        // 🔹 Row of selection buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            SelectionButton(
+                                label = "PWD",
+                                iconResId = R.drawable.pwdicon,
+                                isSelected = userType == "User",
+                                onClick = {
+                                    userType = "User"
+                                    currentStep = 1
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
 
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Image(
-                                        painter = painterResource(id = R.drawable.caregiverlogo),
-                                        contentDescription = "Caregiver Logo",
-                                        modifier = Modifier.size(80.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Button(onClick = {
-                                        userType = "Caregiver"
-                                        currentStep = 1
-                                    }) {
-                                        Text("Caregiver")
-                                    }
-                                }
-                            }
+                            SelectionButton(
+                                label = "Caregiver",
+                                iconResId = R.drawable.caregivericon,
+                                isSelected = userType == "Caregiver",
+                                onClick = {
+                                    userType = "Caregiver"
+                                    currentStep = 1
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Text(
+                            text = "CLICK APPROPRIATELY \n THEN PRESS YOUR OPTION",
+                            color = Color.Gray,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
 
                         1 -> {
                             // Personal Info Step
@@ -459,7 +483,46 @@ fun SignUpScreen(navController: NavController) {
         }
     }
 }
+@Composable
+fun SelectionButton(
+    label: String,
+    iconResId: Int,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val borderColor = if (isSelected) Color(0xFFED3782) else Color(0xFF6BDBE0)
+    val backgroundColor = if (isSelected) Color(0xFFED3782).copy(alpha = 0.1f) else Color.White
 
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .clip(CircleShape)
+                .background(backgroundColor)
+                .border(3.dp, borderColor, CircleShape)
+                .clickable { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = iconResId),
+                contentDescription = "$label Icon",
+                modifier = Modifier.size(70.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = label,
+            fontWeight = FontWeight.Bold,
+            color = if (isSelected) Color(0xFFED3782) else Color.Gray,
+            fontSize = 16.sp
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -491,18 +554,39 @@ fun ContactInfoStepUnified(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Contact Header
+        Text(
+            text = "Contact",
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp,
+            color = Color(0xFF3E0AE2),
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // Email Field
         OutlinedTextField(
             value = email,
             onValueChange = onEmailChange,
             label = { Text("Email") },
             isError = errors["email"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
+        // Contact Number Field
         OutlinedTextField(
             value = contactNumber.removePrefix("09"),
             onValueChange = { input ->
@@ -513,14 +597,21 @@ fun ContactInfoStepUnified(
             leadingIcon = { Text("09") },
             isError = errors["contactNumber"] == true,
             singleLine = true,
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Address", fontWeight = FontWeight.SemiBold)
 
+        // Municipality Dropdown
         DropdownBox(
             label = "Municipality",
             options = municipalities,
@@ -532,9 +623,11 @@ fun ContactInfoStepUnified(
             error = errors["municipality"] == true,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            shape = RoundedCornerShape(20.dp)
         )
 
+        // Barangay Dropdown
         DropdownBox(
             label = "Barangay",
             options = barangays,
@@ -543,35 +636,53 @@ fun ContactInfoStepUnified(
             error = errors["barangay"] == true,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            shape = RoundedCornerShape(20.dp)
         )
 
+        // Street Field
         OutlinedTextField(
             value = street,
             onValueChange = onStreetChange,
             label = { Text("Street") },
             isError = errors["street"] == true,
             singleLine = true,
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
+        // House Number Field
         OutlinedTextField(
             value = houseNumber,
             onValueChange = onHouseNumberChange,
             label = { Text("House Number") },
             isError = errors["houseNumber"] == true,
             singleLine = true,
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
         if (!isCaregiver) {
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Emergency Contact", fontWeight = FontWeight.SemiBold)
+            Text("Emergency Contact", fontWeight = FontWeight.SemiBold, color = Color(0xFF3E0AE2))
 
+            // Emergency Contact Name
             OutlinedTextField(
                 value = emergencyName ?: "",
                 onValueChange = {
@@ -580,9 +691,17 @@ fun ContactInfoStepUnified(
                 label = { Text("Emergency Contact Name") },
                 isError = errors["emergencyName"] == true,
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF3E0AE2),
+                    unfocusedBorderColor = Color(0xFF3E0AE2),
+                    focusedLabelColor = Color(0xFF3E0AE2),
+                    unfocusedLabelColor = Color(0xFF3E0AE2)
+                )
             )
 
+            // Emergency Contact Number
             OutlinedTextField(
                 value = emergencyNumber?.removePrefix("09") ?: "",
                 onValueChange = { input ->
@@ -593,24 +712,45 @@ fun ContactInfoStepUnified(
                 leadingIcon = { Text("09") },
                 isError = errors["emergencyNumber"] == true,
                 singleLine = true,
+                shape = RoundedCornerShape(20.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp)
+                    .padding(top = 8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF3E0AE2),
+                    unfocusedBorderColor = Color(0xFF3E0AE2),
+                    focusedLabelColor = Color(0xFF3E0AE2),
+                    unfocusedLabelColor = Color(0xFF3E0AE2)
+                )
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Button(onClick = onBack, modifier = Modifier.weight(1f)) {
-                Text("Back")
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = onNext, modifier = Modifier.weight(1f)) {
-                Text("Next")
-            }
+
+        // Styled Back and Next Buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            RoundedButton(
+                text = "Back",
+                onClick = onBack,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            )
+            RoundedButton(
+                text = "Next",
+                onClick = onNext,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp)
+            )
         }
+
     }
 }
+
 
 
 
@@ -631,23 +771,34 @@ fun AccountAccessStepUnified(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
+
+
+        // Username Field
         OutlinedTextField(
             value = username,
             onValueChange = {
                 val cleaned = it.filter { c -> c.isLetterOrDigit() || c == '.' || c == '_' }
                 onUsernameChange(cleaned)
-            }
-            ,
+            },
             label = { Text("Username") },
             isError = errors["username"] == true,
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
+        // Password Field
         OutlinedTextField(
             value = password,
             onValueChange = { if (!it.contains(" ")) onPasswordChange(it) },
@@ -661,11 +812,19 @@ fun AccountAccessStepUnified(
                     Icon(imageVector = icon, contentDescription = null)
                 }
             },
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
+        // Confirm Password Field
         OutlinedTextField(
             value = confirmPassword,
             onValueChange = { if (!it.contains(" ")) onConfirmPasswordChange(it) },
@@ -673,24 +832,36 @@ fun AccountAccessStepUnified(
             isError = errors["confirmPassword"] == true,
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
+            shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(top = 8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3E0AE2),
+                unfocusedBorderColor = Color(0xFF3E0AE2),
+                focusedLabelColor = Color(0xFF3E0AE2),
+                unfocusedLabelColor = Color(0xFF3E0AE2)
+            )
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Styled Back and Next Buttons
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Button(onClick = onBack, modifier = Modifier.weight(1f)) {
-                Text("Back")
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = onNext, modifier = Modifier.weight(1f)) {
-                Text("Next")
-            }
+            RoundedButton(
+                text = "Back",
+                onClick = onBack,
+                modifier = Modifier.weight(1f).padding(end = 8.dp)
+            )
+            RoundedButton(
+                text = "Next",
+                onClick = onNext,
+                modifier = Modifier.weight(1f).padding(start = 8.dp)
+            )
         }
     }
 }
+
 @Composable
 fun FinalSubmitStepUnified(
     userType: String,
@@ -708,55 +879,66 @@ fun FinalSubmitStepUnified(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Logo
+        Image(
+            painter = painterResource(id = R.drawable.caregologo),
+            contentDescription = "CareGo Logo",
+            modifier = Modifier.size(150.dp).padding(bottom = 16.dp)
+        )
+
+        // Header
         Text(
             text = "Review & Submit",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp,
+            color = Color(0xFF3E0AE2),
+            modifier = Modifier.padding(bottom = 16.dp)
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("Please review your information before submitting.")
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Review Instruction
+        Text(
+            text = "Please review your information before submitting.",
+            color = Color(0xFF3E0AE2),
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
 
-        // ✅ Insert checkboxes with dialog
+        // Terms and Privacy Checkboxes
         TermsAndPrivacyCheckboxes(
             termsChecked = termsChecked,
             privacyChecked = privacyChecked,
             onTermsChecked = { termsChecked = it },
-            onPrivacyChecked = { privacyChecked = it }
+            onPrivacyChecked = { privacyChecked = it },
+            textColor = Color(0xFF3E0AE2)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Button(
+        // Styled Back and Sign Up Buttons
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            RoundedButton(
+                text = "Back",
                 onClick = onBack,
                 modifier = Modifier.weight(1f).padding(end = 8.dp)
-            ) {
-                Text("Back")
-            }
-
-            Button(
+            )
+            RoundedButton(
+                text = "Sign Up",
                 onClick = onSubmit,
                 enabled = termsChecked && privacyChecked && !isLoading,
                 modifier = Modifier.weight(1f).padding(start = 8.dp)
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Sign Up")
-                }
-            }
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        // Verification Notice
         Text(
-            "A verification email will be sent. You must verify before you can log in.",
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center
+            text = "A verification email will be sent. You must verify before you can log in.",
+            color = Color(0xFF3E0AE2),
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp)
         )
     }
 }
@@ -885,11 +1067,15 @@ fun PersonalInfoStep(
             color = Color(0xFF3E0AE2),
             fontWeight = FontWeight.SemiBold
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            DropdownBox("Month", months, birthMonth, onBirthMonthChange, errors["birthday"] == true, Modifier.weight(1f), RoundedCornerShape(20.dp))
-            DropdownBox("Day", days, birthDay, onBirthDayChange, errors["birthday"] == true, Modifier.weight(1f), RoundedCornerShape(20.dp))
-            DropdownBox("Year", years, birthYear, onBirthYearChange, errors["birthday"] == true, Modifier.weight(1f), RoundedCornerShape(20.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DropdownBox("Month", months, birthMonth, onBirthMonthChange, modifier = Modifier.weight(1f))
+            DropdownBox("Day", days, birthDay, onBirthDayChange, modifier = Modifier.weight(1f))
+            DropdownBox("Year", years, birthYear, onBirthYearChange, modifier = Modifier.weight(1f))
         }
+
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -952,11 +1138,22 @@ fun PersonalInfoStep(
             )
 
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Checkbox(checked = noLicense, onCheckedChange = {
-                    onNoLicenseChange(it)
-                    if (it) onProfessionChange("")
-                })
-                Text("I don’t have a license")
+                Checkbox(
+                    checked = noLicense,
+                    onCheckedChange = {
+                        onNoLicenseChange(it)
+                        if (it) onProfessionChange("")
+                    },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = Color(0xFF3E0AE2),
+                        uncheckedColor = Color(0xFF3E0AE2),
+                        checkmarkColor = Color.White
+                    )
+                )
+                Text(
+                    text = "I don’t have a license",
+                    color = Color(0xFF3E0AE2)
+                )
             }
         }
 
@@ -988,6 +1185,27 @@ fun PersonalInfoStep(
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
+@Composable
+fun RoundedButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(50.dp),
+        shape = RoundedCornerShape(50),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (enabled) Color(0xFFED3782) else Color.LightGray,
+            contentColor = Color.White
+        )
+    ) {
+        Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -999,75 +1217,66 @@ fun DropdownBox(
     onOptionSelected: (String) -> Unit,
     error: Boolean = false,
     modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = RoundedCornerShape(20.dp)
+    shape: RoundedCornerShape = RoundedCornerShape(20.dp),
+    dropdownMaxHeight: Dp = 200.dp
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = modifier.fillMaxWidth()
-    ) {
-        OutlinedTextField(
-            value = selectedOption,
-            onValueChange = {},
-            readOnly = true,
-            label = {
-                Text(
-                    text = label,
-                    color = if (error) MaterialTheme.colorScheme.error else Color(0xFF3E0AE2),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            },
-            isError = error,
-            shape = shape,
-            singleLine = true,
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color(0xFF3E0AE2),
-                unfocusedBorderColor = Color(0xFF3E0AE2),
-                cursorColor = Color(0xFF3E0AE2)
-            )
-        )
-
-        ExposedDropdownMenu(
+    Box(modifier = modifier) {
+        ExposedDropdownMenuBox(
             expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 240.dp) // Max 5 visible items
+            onExpandedChange = { expanded = !expanded }
         ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = option,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    onClick = {
-                        onOptionSelected(option)
-                        expanded = false
-                    }
+            OutlinedTextField(
+                value = selectedOption,
+                onValueChange = {},
+                readOnly = true,
+                label = {
+                    Text(
+                        text = label,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (error) MaterialTheme.colorScheme.error else Color(0xFF3E0AE2)
+                    )
+                },
+                isError = error,
+                shape = shape,
+                singleLine = true,
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+                textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF3E0AE2),
+                    unfocusedBorderColor = Color(0xFF3E0AE2),
+                    cursorColor = Color(0xFF3E0AE2)
                 )
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier
+                    .background(Color.White)
+                    .fillMaxWidth()
+                    .heightIn(max = dropdownMaxHeight)
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        onClick = {
+                            onOptionSelected(option)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
-
-    if (error) {
-        Text(
-            text = "This field is required",
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-        )
-    }
 }
+
+
 
 
 
@@ -1182,8 +1391,10 @@ fun TermsAndPrivacyCheckboxes(
     termsChecked: Boolean,
     privacyChecked: Boolean,
     onTermsChecked: (Boolean) -> Unit,
-    onPrivacyChecked: (Boolean) -> Unit
+    onPrivacyChecked: (Boolean) -> Unit,
+    textColor: Color = Color(0xFF3E0AE2)
 ) {
+    // Add missing dialog state
     val showTermsDialog = remember { mutableStateOf(false) }
     val showPrivacyDialog = remember { mutableStateOf(false) }
 
@@ -1194,15 +1405,25 @@ fun TermsAndPrivacyCheckboxes(
                 .clickable {
                     if (!termsChecked) showTermsDialog.value = true
                 }
+                .padding(bottom = 8.dp)
         ) {
             Checkbox(
                 checked = termsChecked,
                 onCheckedChange = {
                     if (!termsChecked) showTermsDialog.value = true
                     else onTermsChecked(false)
-                }
+                },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = textColor,
+                    uncheckedColor = textColor,
+                    checkmarkColor = Color.White
+                )
             )
-            Text("I agree to the Terms and Conditions")
+            Text(
+                text = "I agree to the Terms and Conditions",
+                color = textColor,
+                fontWeight = FontWeight.SemiBold
+            )
         }
 
         Row(
@@ -1217,9 +1438,18 @@ fun TermsAndPrivacyCheckboxes(
                 onCheckedChange = {
                     if (!privacyChecked) showPrivacyDialog.value = true
                     else onPrivacyChecked(false)
-                }
+                },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = textColor,
+                    uncheckedColor = textColor,
+                    checkmarkColor = Color.White
+                )
             )
-            Text("I agree to the Data Privacy Policy")
+            Text(
+                text = "I agree to the Data Privacy Policy",
+                color = textColor,
+                fontWeight = FontWeight.SemiBold
+            )
         }
 
         if (showTermsDialog.value) {
@@ -1354,6 +1584,7 @@ fun ScrollableAgreementDialog(
     val scrollState = rememberScrollState()
     var agreeEnabled by remember { mutableStateOf(false) }
 
+    // Enable the Agree button only when the user scrolls to the bottom
     LaunchedEffect(scrollState.maxValue) {
         snapshotFlow { scrollState.value }
             .collect { value ->
@@ -1364,98 +1595,125 @@ fun ScrollableAgreementDialog(
     AlertDialog(
         onDismissRequest = onCancel,
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = onAgree,
-                enabled = agreeEnabled
+                enabled = agreeEnabled,
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFED3782),
+                    contentColor = Color.White
+                )
             ) {
-                Text("Agree", color = if (agreeEnabled) MaterialTheme.colorScheme.primary else Color.Gray)
+                Text("Agree", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text("Cancel", color = Color(0xFF3E0AE2))
             }
         },
         title = {
             Text(
                 text = title,
-                fontSize = 20.sp,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 4.dp)
+                color = Color(0xFF3E0AE2),
+                modifier = Modifier.padding(bottom = 8.dp)
             )
         },
         text = {
-            Column(
+            Box(
                 modifier = Modifier
-                    .height(320.dp)
-                    .verticalScroll(scrollState)
+                    .fillMaxWidth()
+                    .heightIn(max = 400.dp) // ✅ Limit the height of the scrollable area
+                    .border(2.dp, Color(0xFF3E0AE2), RoundedCornerShape(20.dp))
                     .padding(8.dp)
             ) {
-                Text(
-                    text = content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    lineHeight = 20.sp
-                )
+                Row {
+                    // Scrollable Text
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(scrollState)
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = content,
+                            color = Color.Gray,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+
+                    // Slim Scroll Progress Bar
+                    Box(
+                        modifier = Modifier
+                            .width(4.dp) // ✅ Slimmer width for the scrollbar
+                            .fillMaxHeight()
+                            .background(Color(0xFF3E0AE2).copy(alpha = 0.1f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp) // ✅ Match the slimmer width
+                                .fillMaxHeight(fraction = scrollState.value / scrollState.maxValue.toFloat().coerceAtLeast(0.01f))
+                                .background(Color(0xFF3E0AE2), shape = RoundedCornerShape(2.dp))
+                        )
+                    }
+                }
             }
         },
         shape = RoundedCornerShape(20.dp),
-        tonalElevation = 8.dp
+        tonalElevation = 8.dp,
+        containerColor = Color.White
     )
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TopAppBarStep(title: String, navController: NavController) {
-    if (title == "Personal Information") {
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.White)
+    ) {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(
+                    color = Color(0xFF82E6E0),
+                    shape = RoundedCornerShape(bottomEnd = 24.dp, bottomStart = 24.dp)
+                )
+                .padding(top = 48.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF82E6E0), shape = RoundedCornerShape(bottomEnd = 24.dp, bottomStart = 24.dp))
-                    .padding(top = 48.dp, bottom = 24.dp, start = 24.dp, end = 24.dp)
-            ) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
-                        }
-                        Text(
-                            text = "Sign Up",
-                            color = Color.White,
-                            fontSize = 16.sp
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
                         )
                     }
-
-
                     Text(
-                        text = "Create Your \nAccount",
+                        text = "Sign Up",
                         color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 45.sp,
-                        lineHeight = 45.sp,
+                        fontSize = 16.sp
                     )
                 }
+
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 45.sp,
+                    lineHeight = 45.sp,
+                )
             }
         }
-    } else {
-        TopAppBar(
-            title = { Text(title) },
-            navigationIcon = {
-                IconButton(onClick = { navController.popBackStack() }) {
-                    Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-            }
-        )
     }
 }
+
 
